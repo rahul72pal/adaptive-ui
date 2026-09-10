@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #f5f3ff;
+  --color-brand-100: #e9ddff;
+  --color-brand-200: #cfbcff;
+  --color-brand-300: #b69df8;
+  --color-brand-400: #9a79f0;
+  --color-brand-500: #7c52e4;
+  --color-brand-600: #6750a4;
+  --color-brand-700: #4f378a;
+  --color-brand-800: #3a266a;
+  --color-brand-900: #22005d;
+
+  --color-surface-bright: #fdf7ff;
+  --color-surface-dim: #ded8e0;
+  --color-surface-container: #f2ecf4;
+  --color-surface-high: #ece6ee;
+  --color-surface-highest: #e6e0e9;
+  --color-surface-variant: #e6e0e9;
+
+  --color-ink-primary: #1d1b20;
+  --color-ink-secondary: #494551;
+  --color-ink-muted: #7a7582;
+
+  --font-sans: 'Geist', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  --shadow-subtle: 0 4px 12px rgba(0, 0, 0, 0.03);
+  --shadow-elevated: 0 12px 32px rgba(0, 0, 0, 0.08);
+  --shadow-glow: 0 0 20px rgba(103, 80, 164, 0.25);
+}
+
+@layer base {
+  :root {
+    --color-primary: #4f378a;
+    --color-primary-container: #6750a4;
+    --color-surface-bg: #fdf7ff;
+  }
+
+  body {
+    font-family: 'Geist', 'Inter', system-ui, sans-serif;
+    background-color: #f8f6fb;
+    color: #1d1b20;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+}
+
+/* Glassmorphism & Custom Styling */
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(230, 224, 233, 0.8);
+}
+
+.gradient-btn {
+  background: linear-gradient(135deg, #4f378a 0%, #6750a4 100%);
+  color: white;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px rgba(79, 55, 138, 0.25);
+}
+
+.gradient-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(79, 55, 138, 0.35);
+  filter: brightness(1.05);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #4f378a 0%, #7c52e4 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Node graph styling */
+.node-line {
+  stroke-dasharray: 6;
+  animation: dash 30s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -1000;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbc4d2;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #7a7582;
+}
