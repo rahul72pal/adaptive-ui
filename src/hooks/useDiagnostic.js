@@ -16,7 +16,10 @@ export function useDiagnostic() {
   const { sessionId, turn, messages, status, totalTurns } = useSelector((state) => state.diagnostic);
 
   const startMutation = useMutation({
-    mutationFn: () => diagnosticApi.startDiagnostic({ topic: activeTopic }),
+    mutationFn: (topicOverride) => {
+      const topicToStart = (typeof topicOverride === 'string' && topicOverride.trim()) ? topicOverride.trim() : activeTopic;
+      return diagnosticApi.startDiagnostic({ topic: topicToStart });
+    },
     onSuccess: (data) => {
       dispatch(startSession({
         sessionId: data.session_id,

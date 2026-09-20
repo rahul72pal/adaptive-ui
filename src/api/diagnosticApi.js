@@ -4,7 +4,7 @@ export const diagnosticApi = {
   startDiagnostic: async ({ topic }) => {
     try {
       // FastAPI StartDiagnosticSchema accepts ONLY { topic: str }
-      const data = await apiClient.post('/diagnostic/start', { topic }, { timeout: 60000 });
+      const data = await apiClient.post('/diagnostic/start', { topic }, { timeout: 180000 });
       return {
         session_id: data.session_id,
         status: data.is_complete ? 'completed' : 'active',
@@ -24,7 +24,7 @@ export const diagnosticApi = {
   answerDiagnostic: async ({ session_id, answer, turn = 1 }) => {
     try {
       // FastAPI AnswerDiagnosticSchema accepts { session_id: str, answer: str }
-      const data = await apiClient.post('/diagnostic/answer', { session_id, answer }, { timeout: 60000 });
+      const data = await apiClient.post('/diagnostic/answer', { session_id, answer }, { timeout: 180000 });
       const currentTurn = data.turns_used || (turn + 1);
       const isComplete = Boolean(data.is_complete || data.status === 'completed' || currentTurn >= 15);
 

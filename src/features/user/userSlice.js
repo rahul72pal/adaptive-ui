@@ -10,17 +10,12 @@ try {
 }
 
 const savedTopicsStr = localStorage.getItem('adaptive_custom_topics');
-let initialTopics = [
-  { id: 'javascript', name: 'JavaScript & Web Core', icon: '⚡', description: 'Async JS, Event Loop, Closures, DOM, & Modern ESNext.' },
-  { id: 'react', name: 'React & State Architecture', icon: '⚛️', description: 'Hooks, Fiber Reconciler, Redux Toolkit, and TanStack Query.' },
-  { id: 'python', name: 'Python Backend & FastAPI', icon: '🐍', description: 'Pydantic schemas, Async IO, Dependency Injection, and ORM.' },
-  { id: 'system-design', name: 'Distributed System Design', icon: '🏗️', description: 'Caching, Load Balancing, Microservices, and Consensus.' },
-];
+let initialTopics = [];
 
 try {
   if (savedTopicsStr) {
     const parsed = JSON.parse(savedTopicsStr);
-    if (Array.isArray(parsed) && parsed.length > 0) initialTopics = parsed;
+    if (Array.isArray(parsed)) initialTopics = parsed;
   }
 } catch (e) {}
 
@@ -46,7 +41,7 @@ const initialState = {
   isAuthModalOpen: false,
   topics: initialTopics,
   completedTopics: initialCompletedTopics,
-  activeTopic: initialTopics[0]?.id || 'javascript',
+  activeTopic: initialTopics[0]?.id || '',
   targetLevel: 'expert',
   activeTab: initialActiveTab, // onboarding, diagnostic, path, workspace, analytics
 };
@@ -60,6 +55,16 @@ const userSlice = createSlice({
     },
     setActiveTopic: (state, action) => {
       state.activeTopic = action.payload;
+    },
+    removeTopic: (state, action) => {
+      const topicId = action.payload;
+      state.topics = state.topics.filter((t) => t.id !== topicId);
+      state.completedTopics = state.completedTopics.filter((t) => t !== topicId);
+      localStorage.setItem('adaptive_custom_topics', JSON.stringify(state.topics));
+      localStorage.setItem('adaptive_completed_topics', JSON.stringify(state.completedTopics));
+      if (state.activeTopic === topicId) {
+        state.activeTopic = state.topics[0]?.id || '';
+      }
     },
     markTopicDiagnosticCompleted: (state, action) => {
       const topicId = action.payload;
@@ -129,6 +134,7 @@ const userSlice = createSlice({
 export const {
   setUserId,
   setActiveTopic,
+  removeTopic,
   markTopicDiagnosticCompleted,
   resetTopicDiagnostic,
   addCustomTopic,

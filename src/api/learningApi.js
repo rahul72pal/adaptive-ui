@@ -8,7 +8,7 @@ export const learningApi = {
         topic: topic.toLowerCase(),
         target_level: target_level.toLowerCase(),
         diagnostic_session_id: diagnostic_session_id || null,
-      }, { timeout: 60000 });
+      }, { timeout: 180000 });
     } catch (err) {
       console.error('[learningApi.generatePath] API Error:', err);
       throw err;

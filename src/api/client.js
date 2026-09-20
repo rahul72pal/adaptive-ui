@@ -7,7 +7,7 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 60000,
+  timeout: 180000, // 3 minutes timeout for LLM generation tasks
 });
 
 // Request Interceptor: Attach JWT Bearer Token if logged in

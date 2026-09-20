@@ -6,7 +6,7 @@ import { setLearningPath } from '../features/learning/learningSlice';
 
 export function useLearningPath() {
   const dispatch = useDispatch();
-  const { userId, activeTopic, targetLevel, isAuthenticated } = useSelector((state) => state.user);
+  const { userId, activeTopic, targetLevel, isAuthenticated, activeTab, completedTopics = [] } = useSelector((state) => state.user);
   const { sessionId } = useSelector((state) => state.diagnostic);
 
   const generateMutation = useMutation({
@@ -23,7 +23,7 @@ export function useLearningPath() {
   const query = useQuery({
     queryKey: ['learningPath', userId, activeTopic],
     queryFn: () => learningApi.getLearningPath({ user_id: userId, topic: activeTopic }),
-    enabled: !!isAuthenticated && !!userId && !!activeTopic,
+    enabled: !!isAuthenticated && !!userId && !!activeTopic && (activeTab === 'path' || activeTab === 'workspace' || completedTopics.includes(activeTopic)),
     staleTime: 1000 * 60 * 5,
     retry: false,
   });

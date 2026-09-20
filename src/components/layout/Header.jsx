@@ -41,11 +41,10 @@ export function Header() {
       dispatch(openAuthModal());
       return;
     }
-    // If diagnostic chat for this topic is already completed, open Learning Path directly!
     if (completedTopics.includes(topicId)) {
       dispatch(setActiveTab('path'));
     } else {
-      startDiagnostic();
+      startDiagnostic(topicId);
     }
     setMobileMenuOpen(false);
   };
@@ -55,10 +54,11 @@ export function Header() {
     if (!newTopicName.trim()) return;
     const topicName = newTopicName.trim();
     dispatch(addCustomTopic(topicName));
+    const topicId = topicName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     setNewTopicName('');
     setShowAddForm(false);
     if (isAuthenticated) {
-      startDiagnostic();
+      startDiagnostic(topicId);
     } else {
       dispatch(openAuthModal());
     }

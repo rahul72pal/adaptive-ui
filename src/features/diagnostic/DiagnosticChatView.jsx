@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { useDiagnostic } from '../../hooks/useDiagnostic';
 import { useLearningPath } from '../../hooks/useLearningPath';
 import { skipDiagnostic } from './diagnosticSlice';
-import { setActiveTab, markTopicDiagnosticCompleted, resetTopicDiagnostic } from '../user/userSlice';
+import { setActiveTab, markTopicDiagnosticCompleted, resetTopicDiagnostic, setTargetLevel } from '../user/userSlice';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -18,27 +18,34 @@ import {
   Brain,
   ListCheck,
   Zap,
-  RotateCcw
+  RotateCcw,
+  Target
 } from 'lucide-react';
+
+const LEVELS = [
+  { id: 'beginner', title: 'Beginner', desc: 'Build solid core fundamentals step-by-step.' },
+  { id: 'intermediate', title: 'Intermediate', desc: 'Skip trivial concepts and deepen core knowledge.' },
+  { id: 'advanced', title: 'Advanced', desc: 'Target architectural patterns & complex edge cases.' },
+  { id: 'expert', title: 'Expert', desc: 'Targeting top 1% technical proficiency and internals.' },
+];
 
 export function DiagnosticChatView() {
   const dispatch = useDispatch();
   const { messages, sendAnswer, isAnswering, turn, status, startDiagnostic } = useDiagnostic();
   const { knowledgeProfile, turnHistory = [] } = useSelector((state) => state.diagnostic);
-  const { activeTopic } = useSelector((state) => state.user);
+  const { activeTopic, targetLevel } = useSelector((state) => state.user);
   const { generatePath, isGenerating } = useLearningPath();
   const [textInput, setTextInput] = useState('');
 
   const isFinished = status === 'completed' || status === 'skipped';
   const totalTurns = 15;
 
-  // Mark topic diagnostic as completed & generate path
+  // Mark topic diagnostic as completed
   useEffect(() => {
     if (isFinished && activeTopic) {
       dispatch(markTopicDiagnosticCompleted(activeTopic));
-      generatePath();
     }
-  }, [isFinished, activeTopic, dispatch, generatePath]);
+  }, [isFinished, activeTopic, dispatch]);
 
   const handleOptionClick = (optionText) => {
     if (isAnswering) return;
@@ -179,6 +186,40 @@ export function DiagnosticChatView() {
               </div>
             </div>
 
+            {/* Select Target Goal Level Section */}
+            <div className="bg-white/10 p-5 rounded-2xl border border-white/15 space-y-3">
+              <div className="flex items-center gap-2 text-white">
+                <Target className="w-5 h-5 text-purple-200" />
+                <h4 className="font-bold text-base">Select Goal Mastery Level for Your Curriculum</h4>
+              </div>
+              <p className="text-xs text-purple-100">
+                Choose the target proficiency depth for your personalized learning path:
+              </p>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                {LEVELS.map((lvl) => {
+                  const isSelected = targetLevel === lvl.id;
+                  return (
+                    <button
+                      key={lvl.id}
+                      type="button"
+                      onClick={() => dispatch(setTargetLevel(lvl.id))}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        isSelected
+                          ? 'bg-white text-[#22005d] border-white font-bold shadow-md scale-[1.02]'
+                          : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                      }`}
+                    >
+                      <div className="text-xs font-bold mb-0.5">{lvl.title}</div>
+                      <div className={`text-[11px] leading-tight ${isSelected ? 'text-[#331177]' : 'text-purple-200'}`}>
+                        {lvl.desc}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row items-center gap-3">
               <Button
                 onClick={handleViewPath}
@@ -186,7 +227,7 @@ export function DiagnosticChatView() {
                 size="lg"
                 className="w-full bg-white text-[#22005d] hover:bg-purple-50 shadow-lg font-bold text-base flex-1"
               >
-                View Generated Learning Path & Concept Graph
+                Generate & View Learning Path ({targetLevel ? targetLevel.toUpperCase() : 'EXPERT'})
                 <ArrowRight className="w-5 h-5" />
               </Button>
               <Button

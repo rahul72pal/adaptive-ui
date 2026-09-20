@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { setActiveTopic, addCustomTopic, setTargetLevel, setActiveTab, openAuthModal } from '../user/userSlice';
+import { setActiveTopic, addCustomTopic, removeTopic, setTargetLevel, setActiveTab, openAuthModal } from '../user/userSlice';
 import { skipDiagnostic } from '../diagnostic/diagnosticSlice';
 import { useDiagnostic } from '../../hooks/useDiagnostic';
 import { useLearningPath } from '../../hooks/useLearningPath';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
-import { Sparkles, CheckCircle2, ArrowRight, Brain, PlusCircle, Search, Play, Map } from 'lucide-react';
+import { Sparkles, CheckCircle2, ArrowRight, Brain, PlusCircle, Search, Play, Map, Trash2, BookOpen } from 'lucide-react';
 
 const LEVELS = [
   { id: 'beginner', title: 'Beginner', desc: 'Starting fresh. Build solid core fundamentals step-by-step.' },
@@ -29,12 +29,16 @@ export function OnboardingView() {
       dispatch(openAuthModal());
       return;
     }
-    // If diagnostic chat for this topic is already completed, jump directly to Learning Path!
     if (completedTopics.includes(topicId)) {
       dispatch(setActiveTab('path'));
     } else {
-      startDiagnostic();
+      startDiagnostic(topicId);
     }
+  };
+
+  const handleRemoveTopic = (e, topicId) => {
+    e.stopPropagation();
+    dispatch(removeTopic(topicId));
   };
 
   const handleAddCustomTopic = (e) => {
@@ -47,16 +51,19 @@ export function OnboardingView() {
       dispatch(openAuthModal());
       return;
     }
-    startDiagnostic();
+    const topicId = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    startDiagnostic(topicId);
   };
 
   const handleOptOut = () => {
+    dispatch(setTargetLevel('beginner'));
     if (!isAuthenticated) {
       dispatch(openAuthModal());
       return;
     }
     dispatch(skipDiagnostic());
     generatePath();
+    dispatch(setActiveTab('path'));
   };
 
   return (
@@ -71,7 +78,7 @@ export function OnboardingView() {
           Select or Create Your <span className="gradient-text">Learning Topic</span>
         </h2>
         <p className="text-sm md:text-base text-ink-secondary leading-relaxed">
-          Choose a topic or enter a custom one. Selecting a topic opens your personalized Learning Path or starts your AI Diagnostic Chat.
+          Type any custom topic below to generate a tailored curriculum or select one of your saved topics.
         </p>
       </div>
 
@@ -82,7 +89,7 @@ export function OnboardingView() {
           <h3 className="font-bold text-base text-ink-primary">Search or Input Any Custom Topic</h3>
         </div>
         <p className="text-xs text-ink-secondary">
-          Want to learn something specific? Type any custom topic (e.g. <em>Quantum Computing, Golang, Machine Learning, Docker, Next.js</em>) to build a custom curriculum.
+          Type any topic name (e.g. <em>Arrays, Strings, Dynamic Programming, System Design, FastAPI, Docker</em>) to start your assessment.
         </p>
 
         <form onSubmit={handleAddCustomTopic} className="flex flex-col sm:flex-row items-center gap-2">
@@ -92,7 +99,7 @@ export function OnboardingView() {
               type="text"
               value={customTopicInput}
               onChange={(e) => setCustomTopicInput(e.target.value)}
-              placeholder="Enter custom topic name (e.g. Kubernetes, Rust, Machine Learning)..."
+              placeholder="Enter custom topic name (e.g. Arrays, Trees, Machine Learning)..."
               className="w-full pl-10 pr-4 py-2.5 bg-white border border-brand-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 text-ink-primary"
             />
           </div>
@@ -105,87 +112,81 @@ export function OnboardingView() {
 
       {/* Topic Cards Grid */}
       <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-xs">
-            1
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-xs">
+              1
+            </div>
+            <h3 className="font-bold text-lg text-ink-primary">Your Learning Topics</h3>
           </div>
-          <h3 className="font-bold text-lg text-ink-primary">Select Topic Focus</h3>
+          {topics.length > 0 && (
+            <span className="text-xs text-ink-muted">Click topic to start 15-turn AI assessment</span>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {topics.map((topic) => {
-            const isSelected = activeTopic === topic.id;
-            const isCompleted = completedTopics.includes(topic.id);
+        {topics.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {topics.map((topic) => {
+              const isSelected = activeTopic === topic.id;
+              const isCompleted = completedTopics.includes(topic.id);
 
-            return (
-              <Card
-                key={topic.id}
-                hoverEffect
-                onClick={() => handleSelectTopic(topic.id)}
-                className={`cursor-pointer transition-all ${
-                  isSelected ? 'ring-2 ring-brand-600 bg-brand-50/50 border-brand-300' : 'bg-white'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <span className="text-3xl">{topic.icon || '🎓'}</span>
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-ink-primary capitalize">{topic.name}</h4>
-                        {isCompleted && (
-                          <Badge variant="success" size="sm">Assessment Complete</Badge>
-                        )}
+              return (
+                <Card
+                  key={topic.id}
+                  hoverEffect
+                  onClick={() => handleSelectTopic(topic.id)}
+                  className={`cursor-pointer transition-all relative group/card ${
+                    isSelected ? 'ring-2 ring-brand-600 bg-brand-50/50 border-brand-300' : 'bg-white'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="text-3xl">{topic.icon || '🎓'}</span>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-ink-primary capitalize">{topic.name}</h4>
+                          {isCompleted && (
+                            <Badge variant="success" size="sm">Assessment Complete</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => handleRemoveTopic(e, topic.id)}
+                            title="Remove topic"
+                            className="p-1 rounded-lg text-ink-muted hover:text-rose-600 hover:bg-rose-50 transition-colors opacity-0 group-hover/card:opacity-100"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          {isSelected ? <CheckCircle2 className="w-5 h-5 text-brand-600" /> : <Play className="w-4 h-4 text-brand-600 opacity-60" />}
+                        </div>
                       </div>
-                      {isSelected ? <CheckCircle2 className="w-5 h-5 text-brand-600" /> : <Play className="w-4 h-4 text-brand-600 opacity-60" />}
-                    </div>
-                    <p className="text-xs text-ink-secondary leading-relaxed">{topic.description}</p>
-                    <div className="pt-2">
-                      <span className="text-[11px] font-bold text-brand-700 hover:underline flex items-center gap-1">
-                        {isCompleted ? (
-                          <>Open Learning Path <Map className="w-3 h-3 text-emerald-600" /></>
-                        ) : (
-                          <>Start 15-Message Assessment <ArrowRight className="w-3 h-3" /></>
-                        )}
-                      </span>
+                      <p className="text-xs text-ink-secondary leading-relaxed">{topic.description}</p>
+                      <div className="pt-2">
+                        <span className="text-[11px] font-bold text-brand-700 hover:underline flex items-center gap-1">
+                          {isCompleted ? (
+                            <>Open Learning Path <Map className="w-3 h-3 text-emerald-600" /></>
+                          ) : (
+                            <>Start 15-Message Assessment <ArrowRight className="w-3 h-3" /></>
+                          )}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Target Mastery Level Selection */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-xs">
-            2
+                </Card>
+              );
+            })}
           </div>
-          <h3 className="font-bold text-lg text-ink-primary">Set Your Goal Mastery Level</h3>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {LEVELS.map((level) => {
-            const isSelected = targetLevel === level.id;
-            return (
-              <button
-                key={level.id}
-                onClick={() => dispatch(setTargetLevel(level.id))}
-                className={`p-4 rounded-2xl border text-left transition-all ${
-                  isSelected
-                    ? 'bg-[#6750a4] text-white border-[#6750a4] shadow-md transform -translate-y-0.5'
-                    : 'bg-white text-ink-primary border-surface-variant hover:border-brand-300 hover:bg-brand-50/30'
-                }`}
-              >
-                <div className={`font-bold text-sm mb-1 ${isSelected ? 'text-white' : 'text-ink-primary'}`}>{level.title}</div>
-                <div className={`text-xs leading-relaxed ${isSelected ? 'text-purple-100' : 'text-ink-secondary'}`}>
-                  {level.desc}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        ) : (
+          <Card className="p-8 text-center bg-white border border-surface-variant space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center mx-auto border border-brand-200">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <h4 className="font-bold text-base text-ink-primary">No Saved Topics Yet</h4>
+            <p className="text-xs text-ink-secondary max-w-md mx-auto">
+              Type any topic name in the box above (e.g. <em>Arrays, Strings, Trees, Dynamic Programming, System Design</em>) to launch your personalized AI diagnostic assessment!
+            </p>
+          </Card>
+        )}
       </div>
 
       {/* Opt-Out Banner */}
