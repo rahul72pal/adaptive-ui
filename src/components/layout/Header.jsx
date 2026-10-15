@@ -1,7 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { setActiveTopic, addCustomTopic, setActiveTab, openAuthModal, logout } from '../../features/user/userSlice';
-import { useDiagnostic } from '../../hooks/useDiagnostic';
+import {
+  setActiveTopic,
+  setActiveTab,
+  openAuthModal,
+  logout,
+  setTargetLanguage,
+  setExplanationLanguage
+} from '../../features/user/userSlice';
+import { useUserTopics } from '../../hooks/useUserTopics';
 import { Badge } from '../ui/Badge';
 import {
   Sparkles,
@@ -16,51 +23,91 @@ import {
   Menu,
   X,
   Layers,
-  CheckCircle2
+  CheckCircle2,
+  Code2,
+  Globe,
+  ChevronDown
 } from 'lucide-react';
 
 export function Header() {
   const dispatch = useDispatch();
-  const { activeTab, activeTopic, topics = [], completedTopics = [], user, isAuthenticated } = useSelector((state) => state.user);
-  const { startDiagnostic } = useDiagnostic();
+  const {
+    activeTab,
+    activeTopic,
+    user,
+    isAuthenticated,
+    targetLanguage,
+    explanationLanguage
+  } = useSelector((state) => state.user);
+  const { topics, selectOrCreateTopic } = useUserTopics();
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [topicDropdownOpen, setTopicDropdownOpen] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTopicName, setNewTopicName] = useState('');
 
+  const topicDropdownRef = useRef(null);
+
+  // Close topic dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (topicDropdownRef.current && !topicDropdownRef.current.contains(event.target)) {
+        setTopicDropdownOpen(false);
+        setShowAddForm(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const navItems = [
-    { id: 'onboarding', label: 'Topics & Overview', icon: Compass },
-    { id: 'diagnostic', label: '15-Turn AI Chat', icon: MessageSquare },
-    { id: 'path', label: 'Learning Path', icon: Map },
-    { id: 'workspace', label: 'Workspace', icon: BookOpen },
-    { id: 'analytics', label: 'Knowledge Profile', icon: BarChart3 },
+    { id: 'onboarding', label: 'Topics Overview', shortLabel: 'Overview', icon: Compass },
+    { id: 'diagnostic', label: '15-Turn AI Chat', shortLabel: 'AI Chat', icon: MessageSquare },
+    { id: 'path', label: 'Learning Path', shortLabel: 'Path', icon: Map },
+    { id: 'workspace', label: 'Workspace', shortLabel: 'Workspace', icon: BookOpen },
+    { id: 'analytics', label: 'Knowledge Profile', shortLabel: 'Profile', icon: BarChart3 },
   ];
 
-  const handleTopicClick = (topicId) => {
-    dispatch(setActiveTopic(topicId));
+  const currentTopicObj = topics.find((t) => t.id === activeTopic) || {
+    id: activeTopic || 'getting-started',
+    name: activeTopic ? activeTopic.replace(/[-_]+/g, ' ') : 'Select Topic',
+    icon: '🎓',
+  };
+
+  const handleTopicClick = async (topic) => {
+    dispatch(setActiveTopic(topic.id));
+    setTopicDropdownOpen(false);
     if (!isAuthenticated) {
       dispatch(openAuthModal());
       return;
     }
-    if (completedTopics.includes(topicId)) {
+    if (topic.is_completed) {
       dispatch(setActiveTab('path'));
     } else {
-      startDiagnostic(topicId);
+      dispatch(setActiveTab('onboarding'));
     }
     setMobileMenuOpen(false);
   };
 
-  const handleAddTopic = (e) => {
+  const handleAddTopic = async (e) => {
     e.preventDefault();
     if (!newTopicName.trim()) return;
     const topicName = newTopicName.trim();
-    dispatch(addCustomTopic(topicName));
-    const topicId = topicName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     setNewTopicName('');
     setShowAddForm(false);
-    if (isAuthenticated) {
-      startDiagnostic(topicId);
-    } else {
+    setTopicDropdownOpen(false);
+    if (!isAuthenticated) {
       dispatch(openAuthModal());
+      return;
+    }
+    try {
+      const topicData = await selectOrCreateTopic(topicName);
+      if (topicData) {
+        dispatch(setActiveTopic(topicData.topic_slug));
+      }
+      dispatch(setActiveTab('onboarding'));
+    } catch (err) {
+      console.error('Header topic creation failed:', err);
     }
     setMobileMenuOpen(false);
   };
@@ -70,146 +117,191 @@ export function Header() {
     setMobileMenuOpen(false);
   };
 
+  const toggleCodingLanguage = () => {
+    const nextLang = targetLanguage === 'python' ? 'cpp' : targetLanguage === 'cpp' ? 'js' : 'python';
+    dispatch(setTargetLanguage(nextLang));
+  };
+
+  const toggleExplanationLanguage = () => {
+    const nextExp = explanationLanguage === 'english' ? 'hinglish' : 'english';
+    dispatch(setExplanationLanguage(nextExp));
+  };
+
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-surface-variant px-4 lg:px-8 py-2.5 transition-all shadow-subtle">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-40 bg-[#111114]/95 backdrop-blur-md border-b border-[#222229] px-3 sm:px-6 lg:px-8 py-2.5 transition-all shadow-subtle text-[#F4F4F5]">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 lg:gap-6">
         
-        {/* Brand & AI Engine Badge */}
-        <div
-          onClick={() => dispatch(setActiveTab('onboarding'))}
-          className="flex items-center gap-3 cursor-pointer group shrink-0"
-        >
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl gradient-btn flex items-center justify-center shadow-md shrink-0 group-hover:scale-105 transition-transform">
-            <Sparkles className="w-5 h-5 text-white animate-pulse" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-extrabold text-base sm:text-lg text-ink-primary tracking-tight group-hover:text-brand-700 transition-colors">
-                Lumina AI
-              </h1>
-              <Badge variant="ai" size="sm" className="hidden xl:inline-flex">
-                <Sparkles className="w-3 h-3 text-brand-600" />
-                Adaptive Platform
-              </Badge>
+        {/* ========================================================= */}
+        {/* LEFT: BRAND & TOPIC SELECTOR                              */}
+        {/* ========================================================= */}
+        <div className="flex items-center gap-2.5 sm:gap-4 shrink-0 min-w-0">
+          {/* Logo & Brand title */}
+          <div
+            onClick={() => dispatch(setActiveTab('onboarding'))}
+            className="flex items-center gap-2.5 cursor-pointer group shrink-0"
+            role="button"
+            tabIndex={0}
+            title="Lumina AI Home"
+          >
+            <div className="w-9 h-9 rounded-xl bg-[#6558F5] border border-[#8B7CFF]/40 flex items-center justify-center shadow-sm shrink-0 group-hover:scale-105 transition-transform">
+              <Sparkles className="w-4.5 h-4.5 text-white" />
             </div>
-            <p className="text-[11px] text-ink-muted hidden sm:block">
-              Dynamic Curriculum & Assessment
-            </p>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-base sm:text-lg text-[#F4F4F5] tracking-tight group-hover:text-[#8B7CFF] transition-colors whitespace-nowrap">
+                  Lumina AI
+                </span>
+                <Badge variant="ai" size="sm" className="hidden 2xl:inline-flex py-0.5 px-2">
+                  <Sparkles className="w-3 h-3 text-[#8B7CFF] mr-1" />
+                  Adaptive Platform
+                </Badge>
+              </div>
+              <span className="text-[10px] text-[#71717A] hidden sm:inline whitespace-nowrap">
+                Dynamic Curriculum & Assessment
+              </span>
+            </div>
+          </div>
+
+          {/* Desktop Topic Dropdown Pill */}
+          <div className="relative hidden md:block shrink-0" ref={topicDropdownRef}>
+            <button
+              onClick={() => setTopicDropdownOpen(!topicDropdownOpen)}
+              className="h-9 px-3 bg-[#16161B] hover:bg-[#1C1C23] border border-[#292932] hover:border-[#49406F] rounded-xl flex items-center gap-1.5 text-xs font-medium text-[#F4F4F5] transition-all shadow-2xs group cursor-pointer"
+              title="Switch Learning Topic"
+            >
+              <span className="text-sm">{currentTopicObj.icon || '🎓'}</span>
+              <span className="max-w-[130px] truncate capitalize">
+                {currentTopicObj.canonical_topic || currentTopicObj.name}
+              </span>
+              <ChevronDown className={`w-3.5 h-3.5 text-[#71717A] transition-transform duration-200 ${topicDropdownOpen ? 'rotate-180 text-[#8B7CFF]' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {topicDropdownOpen && (
+              <div className="absolute left-0 mt-1.5 w-64 bg-[#111114] rounded-2xl border border-[#292932] shadow-elevated p-2 z-50 animate-fadeIn space-y-1">
+                <div className="px-2.5 py-1.5 text-[10px] font-bold text-[#71717A] uppercase tracking-wider flex items-center justify-between border-b border-[#222229]">
+                  <span className="flex items-center gap-1">
+                    <Layers className="w-3 h-3 text-[#8B7CFF]" /> Saved Topics
+                  </span>
+                  <span className="text-[#8B7CFF] font-semibold">{topics.length} total</span>
+                </div>
+
+                <div className="max-h-56 overflow-y-auto space-y-0.5 py-1">
+                  {topics.length > 0 ? (
+                    topics.map((t) => {
+                      const isSelected = activeTopic === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => handleTopicClick(t)}
+                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#211C38] text-[#8B7CFF] border border-[#49406F]'
+                              : 'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#16161B]'
+                          }`}
+                        >
+                          <span className="text-sm">{t.icon || '🎓'}</span>
+                          <span className="truncate flex-1 capitalize">{t.canonical_topic || t.name}</span>
+                          {t.is_completed && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="p-3 text-center text-xs text-[#71717A]">
+                      No saved topics yet.
+                    </div>
+                  )}
+                </div>
+
+                {/* Add Topic Inside Dropdown */}
+                <div className="pt-1.5 border-t border-[#222229]">
+                  {showAddForm ? (
+                    <form onSubmit={handleAddTopic} className="flex items-center gap-1.5 p-1">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={newTopicName}
+                        onChange={(e) => setNewTopicName(e.target.value)}
+                        placeholder="New topic name..."
+                        className="w-full text-xs px-2.5 py-1.5 bg-[#16161B] border border-[#292932] rounded-lg text-[#F4F4F5] placeholder:text-[#71717A] focus:outline-none focus:border-[#8B7CFF]"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!newTopicName.trim()}
+                        className="px-2.5 py-1.5 bg-[#6558F5] hover:bg-[#7568FF] text-white rounded-lg text-xs font-bold disabled:opacity-40 shrink-0 cursor-pointer"
+                      >
+                        Add
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      onClick={() => setShowAddForm(true)}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium text-[#8B7CFF] hover:bg-[#211C38] transition-colors border border-dashed border-[#49406F] cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Custom Topic
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Desktop Topic Selector Tabs */}
-        <div className="hidden lg:flex items-center gap-1.5 bg-surface-container/70 p-1.5 rounded-2xl border border-surface-variant max-w-xl overflow-x-auto">
-          <span className="text-[10px] font-bold text-ink-muted uppercase tracking-wider px-2 flex items-center gap-1 shrink-0">
-            <Layers className="w-3 h-3 text-brand-600" />
-            Topics:
-          </span>
+
+
+        {/* ========================================================= */}
+        {/* RIGHT: PREFERENCES & ACCOUNT                              */}
+        {/* ========================================================= */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           
-          {topics.map((topic) => {
-            const isSelected = activeTopic === topic.id;
-            const isCompleted = completedTopics.includes(topic.id);
+          {/* Coding Language Toggle */}
+          <button
+            onClick={toggleCodingLanguage}
+            title="Click to toggle coding language"
+            className="hidden sm:flex h-9 px-2.5 bg-[#16161B] hover:bg-[#1C1C23] text-[#F4F4F5] rounded-xl border border-[#292932] hover:border-[#49406F] items-center gap-1.5 text-xs font-medium transition-all shadow-2xs cursor-pointer"
+          >
+            <Code2 className="w-3.5 h-3.5 text-[#8B7CFF]" />
+            <span className="whitespace-nowrap">
+              {targetLanguage === 'cpp' ? '⚡ C++' : targetLanguage === 'js' ? '🟨 JS' : '🐍 Python'}
+            </span>
+          </button>
 
-            return (
-              <button
-                key={topic.id}
-                onClick={() => handleTopicClick(topic.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                  isSelected
-                    ? 'bg-brand-600 text-white shadow-sm scale-[1.02]'
-                    : 'text-ink-primary hover:bg-white hover:text-brand-700'
-                }`}
-              >
-                <span>{topic.icon || '🎓'}</span>
-                <span>{topic.name}</span>
-                {isCompleted && <CheckCircle2 className={`w-3 h-3 ${isSelected ? 'text-emerald-300' : 'text-emerald-600'}`} />}
-              </button>
-            );
-          })}
+          {/* Explanation Language Toggle */}
+          <button
+            onClick={toggleExplanationLanguage}
+            title="Click to toggle explanation language"
+            className="hidden xl:flex h-9 px-2.5 bg-[#16161B] hover:bg-[#1C1C23] text-[#F4F4F5] rounded-xl border border-[#292932] hover:border-[#49406F] items-center gap-1.5 text-xs font-medium transition-all shadow-2xs cursor-pointer"
+          >
+            <Globe className="w-3.5 h-3.5 text-[#8B7CFF]" />
+            <span className="whitespace-nowrap">
+              {explanationLanguage === 'hinglish' ? '🇮🇳 Hinglish' : '🇬🇧 English'}
+            </span>
+          </button>
 
-          {/* Add Custom Topic Inline Trigger */}
-          {showAddForm ? (
-            <form onSubmit={handleAddTopic} className="flex items-center gap-1 shrink-0 px-1">
-              <input
-                type="text"
-                autoFocus
-                value={newTopicName}
-                onChange={(e) => setNewTopicName(e.target.value)}
-                placeholder="Topic name..."
-                className="w-28 text-xs px-2 py-1 bg-white border border-brand-300 rounded-lg text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
-              />
-              <button
-                type="submit"
-                disabled={!newTopicName.trim()}
-                className="p-1 bg-brand-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowAddForm(false)}
-                className="text-ink-muted hover:text-ink-primary p-0.5 text-xs"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </form>
-          ) : (
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-brand-700 hover:bg-brand-50 transition-all whitespace-nowrap border border-dashed border-brand-300 shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Custom
-            </button>
-          )}
-        </div>
-
-        {/* Right Navigation & User Actions */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          
-          {/* Main Navigation Tabs */}
-          <nav className="hidden md:flex items-center bg-surface-container/60 p-1 rounded-xl border border-surface-variant">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleNavClick(item.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    isActive
-                      ? 'bg-white text-brand-700 shadow-sm border border-brand-200 font-bold'
-                      : 'text-ink-secondary hover:text-ink-primary hover:bg-white/50'
-                  }`}
-                >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-brand-600' : 'text-ink-muted'}`} />
-                  <span className="hidden xl:inline">{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* User Account / Auth */}
+          {/* User Account / Auth Button */}
           {isAuthenticated && user ? (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 px-3 py-1 bg-brand-50 border border-brand-200 rounded-xl">
-                <div className="w-6 h-6 rounded-lg gradient-btn flex items-center justify-center font-bold text-xs text-white">
+            <div className="flex items-center gap-1.5 bg-[#16161B] p-0.5 rounded-xl border border-[#292932]">
+              <div className="flex items-center gap-2 pl-2 pr-2.5 py-1">
+                <div className="w-6 h-6 rounded-lg bg-[#6558F5] text-white flex items-center justify-center font-bold text-xs shrink-0">
                   {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
                 </div>
-                <span className="text-xs font-bold text-brand-900 hidden sm:inline">{user.name}</span>
+                <span className="text-xs font-semibold text-[#F4F4F5] hidden sm:inline max-w-[90px] truncate">
+                  {user.name}
+                </span>
               </div>
               <button
                 onClick={() => dispatch(logout())}
                 title="Log out"
-                className="flex items-center gap-1 px-2.5 py-1.5 text-ink-secondary hover:text-rose-600 hover:bg-rose-50 border border-surface-variant hover:border-rose-200 rounded-xl text-xs font-semibold transition-all"
+                className="h-8 w-8 flex items-center justify-center text-[#71717A] hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
           ) : (
             <button
               onClick={() => dispatch(openAuthModal())}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+              className="h-9 px-3.5 bg-[#6558F5] hover:bg-[#7568FF] text-white rounded-xl text-xs font-semibold transition-all shadow-sm flex items-center gap-1.5 border border-[#8B7CFF]/40 cursor-pointer"
             >
               <LogIn className="w-3.5 h-3.5" />
               <span>Sign In</span>
@@ -219,107 +311,130 @@ export function Header() {
           {/* Mobile Menu Hamburger Toggle */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 text-ink-primary hover:bg-surface-container rounded-xl transition-all"
+            className="lg:hidden h-9 w-9 flex items-center justify-center text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#16161B] rounded-xl border border-[#292932] transition-all shrink-0 cursor-pointer"
             title="Toggle Navigation Menu"
+            aria-label="Toggle navigation menu"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
       </div>
 
-      {/* Animated Mobile Drawer Menu (Topics + Navigation) */}
+      {/* ========================================================= */}
+      {/* MOBILE DRAWER ACCORDION (Viewports < lg: 1024px)          */}
+      {/* ========================================================= */}
       {mobileMenuOpen && (
-        <div className="md:hidden pt-3 pb-3 border-t border-surface-variant mt-2 space-y-4 animate-fadeIn">
+        <div className="lg:hidden pt-3 pb-3 border-t border-[#222229] mt-2.5 space-y-4 animate-fadeIn">
           
-          {/* Mobile Topic Selector */}
-          <div className="space-y-2 px-1">
-            <div className="text-[11px] font-bold text-ink-muted uppercase tracking-wider flex items-center justify-between">
-              <span>Select Topic Focus</span>
-              <button
-                onClick={() => setShowAddForm(!showAddForm)}
-                className="text-[11px] text-brand-700 font-bold flex items-center gap-0.5"
-              >
-                <Plus className="w-3 h-3" /> Custom
-              </button>
+          {/* 1. Mobile Primary Views */}
+          <div className="space-y-1">
+            <div className="text-[10px] font-bold text-[#71717A] uppercase tracking-wider px-1 mb-1">
+              Main Views
             </div>
-
-            {showAddForm && (
-              <form onSubmit={handleAddTopic} className="flex items-center gap-1 py-1">
-                <input
-                  type="text"
-                  autoFocus
-                  value={newTopicName}
-                  onChange={(e) => setNewTopicName(e.target.value)}
-                  placeholder="New custom topic..."
-                  className="flex-1 text-xs px-3 py-1.5 bg-surface-container border border-brand-300 rounded-xl text-ink-primary"
-                />
-                <button
-                  type="submit"
-                  disabled={!newTopicName.trim()}
-                  className="px-3 py-1.5 bg-brand-600 text-white rounded-xl text-xs font-bold disabled:opacity-50"
-                >
-                  Start
-                </button>
-              </form>
-            )}
-
-            <div className="grid grid-cols-2 gap-2">
-              {topics.map((topic) => {
-                const isSelected = activeTopic === topic.id;
-                const isCompleted = completedTopics.includes(topic.id);
-
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
                 return (
                   <button
-                    key={topic.id}
-                    onClick={() => handleTopicClick(topic.id)}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl text-xs font-bold text-left transition-all ${
-                      isSelected
-                        ? 'bg-brand-600 text-white shadow-sm'
-                        : 'bg-surface-container text-ink-primary hover:bg-brand-50'
+                    key={item.id}
+                    onClick={() => handleNavClick(item.id)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-[#211C38] text-[#8B7CFF] border border-[#49406F]'
+                        : 'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#16161B] border border-transparent'
                     }`}
                   >
-                    <span className="text-base">{topic.icon || '🎓'}</span>
-                    <span className="truncate">{topic.name}</span>
-                    {isCompleted && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 ml-auto" />}
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#8B7CFF]' : 'text-[#71717A]'}`} />
+                    <span>{item.label}</span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Mobile View Navigation Links */}
-          <div className="space-y-1 pt-2 border-t border-surface-variant">
-            <div className="text-[11px] font-bold text-ink-muted uppercase tracking-wider px-1 mb-1">
-              Views
+          {/* 2. Mobile Topic Switcher */}
+          <div className="space-y-2 pt-2 border-t border-[#222229]">
+            <div className="text-[10px] font-bold text-[#71717A] uppercase tracking-wider px-1 flex items-center justify-between">
+              <span>Current Topic Focus</span>
+              <button
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="text-[11px] text-[#8B7CFF] font-semibold flex items-center gap-0.5 cursor-pointer"
+              >
+                <Plus className="w-3 h-3" /> Custom
+              </button>
             </div>
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
+
+            {showAddForm && (
+              <form onSubmit={handleAddTopic} className="flex items-center gap-1.5 py-1">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newTopicName}
+                  onChange={(e) => setNewTopicName(e.target.value)}
+                  placeholder="New topic name..."
+                  className="flex-1 text-xs px-3 py-1.5 bg-[#16161B] border border-[#292932] rounded-xl text-[#F4F4F5] placeholder:text-[#71717A] focus:outline-none focus:border-[#8B7CFF]"
+                />
                 <button
-                  key={item.id}
-                  onClick={() => handleNavClick(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
-                    isActive
-                      ? 'bg-brand-50 text-brand-700 border border-brand-200 font-bold'
-                      : 'text-ink-primary hover:bg-surface-container'
-                  }`}
+                  type="submit"
+                  disabled={!newTopicName.trim()}
+                  className="px-3 py-1.5 bg-[#6558F5] text-white rounded-xl text-xs font-bold disabled:opacity-40 cursor-pointer"
                 >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-brand-600' : 'text-ink-muted'}`} />
-                  {item.label}
+                  Add
                 </button>
-              );
-            })}
+              </form>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              {topics.slice(0, 6).map((topic) => {
+                const isSelected = activeTopic === topic.id;
+                return (
+                  <button
+                    key={topic.id}
+                    onClick={() => handleTopicClick(topic)}
+                    className={`flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-left transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#211C38] text-[#8B7CFF] border border-[#49406F]'
+                        : 'bg-[#16161B] text-[#A1A1AA] hover:text-[#F4F4F5] border border-[#222229]'
+                    }`}
+                  >
+                    <span className="text-base">{topic.icon || '🎓'}</span>
+                    <span className="truncate capitalize">{topic.canonical_topic || topic.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3. Mobile Preferences & Account */}
+          <div className="pt-2 border-t border-[#222229] flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={toggleCodingLanguage}
+                className="h-8 px-2.5 bg-[#16161B] hover:bg-[#1C1C23] text-[#F4F4F5] rounded-lg border border-[#292932] flex items-center gap-1 text-[11px] font-medium cursor-pointer"
+              >
+                <Code2 className="w-3 h-3 text-[#8B7CFF]" />
+                <span>{targetLanguage === 'cpp' ? 'C++' : targetLanguage === 'js' ? 'JS' : 'Python'}</span>
+              </button>
+              <button
+                onClick={toggleExplanationLanguage}
+                className="h-8 px-2.5 bg-[#16161B] hover:bg-[#1C1C23] text-[#F4F4F5] rounded-lg border border-[#292932] flex items-center gap-1 text-[11px] font-medium cursor-pointer"
+              >
+                <Globe className="w-3 h-3 text-[#8B7CFF]" />
+                <span>{explanationLanguage === 'hinglish' ? 'Hinglish' : 'English'}</span>
+              </button>
+            </div>
+
             {isAuthenticated && (
               <button
                 onClick={() => {
                   dispatch(logout());
                   setMobileMenuOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-left text-rose-600 hover:bg-rose-50 transition-all border border-rose-100 mt-2"
+                className="h-8 px-3 flex items-center gap-1.5 text-xs font-semibold text-rose-400 hover:bg-rose-950/40 border border-rose-900/60 rounded-lg transition-colors cursor-pointer"
               >
-                <LogOut className="w-4 h-4 text-rose-600" />
-                Logout
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Logout</span>
               </button>
             )}
           </div>
@@ -328,3 +443,5 @@ export function Header() {
     </header>
   );
 }
+
+export default Header;

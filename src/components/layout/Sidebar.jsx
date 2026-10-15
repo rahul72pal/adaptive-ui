@@ -50,7 +50,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`bg-white border-r border-surface-variant p-4 space-y-6 flex flex-col justify-between shrink-0 shadow-subtle min-h-[calc(100vh-65px)] transition-all duration-300 ${
+      className={`bg-[#111114] border-r border-[#222229] p-4 space-y-6 flex flex-col justify-between shrink-0 shadow-subtle min-h-[calc(100vh-65px)] transition-all duration-300 text-[#F4F4F5] ${
         isCollapsed ? 'w-16 items-center' : 'w-full lg:w-72'
       }`}
     >
@@ -58,29 +58,29 @@ export function Sidebar() {
         {/* Collapse / Expand Toggle Button */}
         <div className="flex items-center justify-between">
           {!isCollapsed && (
-            <span className="text-[11px] font-bold text-ink-muted uppercase tracking-wider">Navigation Panel</span>
+            <span className="text-[11px] font-bold text-[#71717A] uppercase tracking-wider">Navigation Panel</span>
           )}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-            className="p-1.5 text-ink-muted hover:text-brand-700 hover:bg-surface-container rounded-xl transition-all mx-auto lg:mx-0"
+            className="p-1.5 text-[#71717A] hover:text-[#8B7CFF] hover:bg-[#16161B] rounded-xl transition-all mx-auto lg:mx-0 cursor-pointer"
           >
             {isCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
           </button>
         </div>
 
         {/* User Profile Card */}
-        <div className={`rounded-2xl bg-surface-container/70 border border-surface-variant ${isCollapsed ? 'p-2 text-center' : 'p-3.5 space-y-3'}`}>
+        <div className={`rounded-2xl bg-[#16161B] border border-[#292932] ${isCollapsed ? 'p-2 text-center' : 'p-3.5 space-y-3'}`}>
           {isAuthenticated && user ? (
             <div className={`flex items-center justify-between gap-3 ${isCollapsed ? 'flex-col' : ''}`}>
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-9 h-9 rounded-xl gradient-btn flex items-center justify-center font-bold text-sm text-white shrink-0 shadow-sm">
+                <div className="w-9 h-9 rounded-xl bg-[#6558F5] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">
                   {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
                 </div>
                 {!isCollapsed && (
                   <div className="min-w-0">
-                    <div className="font-bold text-xs text-ink-primary truncate">{user.name || 'Learner'}</div>
-                    <div className="text-[10px] text-ink-muted truncate">{user.email}</div>
+                    <div className="font-bold text-xs text-[#F4F4F5] truncate">{user.name || 'Learner'}</div>
+                    <div className="text-[10px] text-[#71717A] truncate">{user.email}</div>
                   </div>
                 )}
               </div>
@@ -88,7 +88,7 @@ export function Sidebar() {
               <button
                 onClick={() => dispatch(logout())}
                 title="Logout"
-                className="p-1.5 text-ink-muted hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all shrink-0"
+                className="p-1.5 text-[#71717A] hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-all shrink-0 cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -96,14 +96,14 @@ export function Sidebar() {
           ) : (
             <div className="flex flex-col gap-2">
               {!isCollapsed && (
-                <div className="flex items-center gap-2 text-xs text-ink-secondary">
-                  <User className="w-4 h-4 text-brand-600" />
+                <div className="flex items-center gap-2 text-xs text-[#A1A1AA]">
+                  <User className="w-4 h-4 text-[#8B7CFF]" />
                   <span>Guest Learner</span>
                 </div>
               )}
               <button
                 onClick={() => dispatch(openAuthModal())}
-                className={`bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 transition-all flex items-center justify-center gap-1.5 shadow-sm ${
+                className={`bg-[#6558F5] text-white rounded-xl font-bold hover:bg-[#7568FF] transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer ${
                   isCollapsed ? 'p-2 text-xs' : 'w-full py-2 px-3 text-xs'
                 }`}
               >
@@ -114,89 +114,75 @@ export function Sidebar() {
           )}
         </div>
 
-        {/* Learning Modules Section (Full Height without max-h truncation) */}
+        {/* Learning Modules Section */}
         <div className="space-y-2">
           {!isCollapsed && (
-            <div className="text-[11px] font-bold text-ink-muted uppercase tracking-wider px-2 flex items-center justify-between">
+            <div className="text-[11px] font-bold text-[#71717A] uppercase tracking-wider px-2 flex items-center justify-between">
               <span>Learning Modules</span>
               <button
                 onClick={() => setShowAddForm(!showAddForm)}
-                className="text-[10px] text-brand-700 hover:text-brand-900 font-bold flex items-center gap-0.5"
+                className="text-[#8B7CFF] hover:underline flex items-center gap-1 font-bold lowercase text-xs cursor-pointer"
               >
-                <Plus className="w-3 h-3" /> Custom
+                <Plus className="w-3.5 h-3.5" /> add
               </button>
             </div>
           )}
 
-          {/* Inline Custom Topic Input Form */}
           {showAddForm && !isCollapsed && (
-            <form onSubmit={handleAddTopic} className="px-1 py-1 space-y-2">
+            <form onSubmit={handleAddTopic} className="px-2 pt-1 flex gap-1.5">
               <input
                 type="text"
                 autoFocus
                 value={newTopicName}
                 onChange={(e) => setNewTopicName(e.target.value)}
-                placeholder="Topic name (e.g. Golang)..."
-                className="w-full text-xs px-3 py-2 bg-surface-container border border-brand-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/30 text-ink-primary"
+                placeholder="Topic name..."
+                className="flex-1 bg-[#16161B] border border-[#292932] rounded-xl px-3 py-1.5 text-xs text-[#F4F4F5] placeholder:text-[#71717A] focus:outline-none focus:border-[#8B7CFF]"
               />
-              <div className="flex items-center gap-1">
-                <button
-                  type="submit"
-                  disabled={!newTopicName.trim()}
-                  className="flex-1 py-1 px-2 bg-brand-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
-                >
-                  Add Topic
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddForm(false)}
-                  className="py-1 px-2 text-ink-muted text-xs hover:text-ink-primary"
-                >
-                  Cancel
-                </button>
-              </div>
+              <button
+                type="submit"
+                disabled={!newTopicName.trim()}
+                className="bg-[#6558F5] text-white px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-40 cursor-pointer"
+              >
+                Add
+              </button>
             </form>
           )}
 
-          {/* Modules List taking full fluid height */}
           <div className="space-y-1">
-            {topics.map((mod) => {
-              const isSelected = activeTopic === mod.id;
+            {topics.map((t) => {
+              const isSelected = activeTopic === t.id;
               return (
                 <button
-                  key={mod.id}
-                  onClick={() => handleSelectModule(mod.id)}
-                  title={mod.name}
-                  className={`w-full flex items-center rounded-xl text-xs font-medium transition-all ${
-                    isCollapsed ? 'justify-center p-2.5' : 'justify-between p-2.5'
-                  } ${
+                  key={t.id}
+                  onClick={() => handleSelectModule(t.id)}
+                  title={t.name}
+                  className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     isSelected
-                      ? 'bg-brand-50 text-brand-900 border border-brand-200 shadow-sm font-semibold'
-                      : 'text-ink-primary hover:bg-surface-container'
+                      ? 'bg-[#211C38] text-[#8B7CFF] border border-[#49406F] shadow-xs'
+                      : 'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#16161B] border border-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="text-base shrink-0">{mod.icon || '🎓'}</span>
-                    {!isCollapsed && <span className="truncate capitalize">{mod.name}</span>}
+                    <span className="text-base shrink-0">{t.icon || '🎓'}</span>
+                    {!isCollapsed && <span className="truncate">{t.name}</span>}
                   </div>
-                  {!isCollapsed && isSelected && <ChevronRight className="w-3.5 h-3.5 text-brand-600 shrink-0" />}
+                  {!isCollapsed && isSelected && (
+                    <ChevronRight className="w-3.5 h-3.5 text-[#8B7CFF] shrink-0" />
+                  )}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Concept Nodes Quick Jump List */}
-        {!isCollapsed && nodes && nodes.length > 0 && (
-          <div className="space-y-2 pt-2 border-t border-surface-variant">
-            <div className="text-[11px] font-bold text-ink-muted uppercase tracking-wider px-2 flex items-center justify-between">
-              <span>Concept Sequence</span>
-              <span className="text-[10px] text-brand-700 font-semibold">{overallProgress}%</span>
+        {/* Concept Graph Outline */}
+        {nodes.length > 0 && !isCollapsed && (
+          <div className="space-y-2 pt-2 border-t border-[#222229]">
+            <div className="text-[11px] font-bold text-[#71717A] uppercase tracking-wider px-2">
+              Concept Nodes ({masteredCount}/{nodes.length})
             </div>
 
-            <ProgressBar progress={overallProgress} height="h-1.5" className="px-2" />
-
-            <div className="space-y-1 pt-1">
+            <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
               {nodes.map((node) => {
                 const isSelected = node.concept_id === selectedNodeId;
                 const isMastered = node.status === 'mastered' || node.status === 'known';
@@ -205,23 +191,23 @@ export function Sidebar() {
                 return (
                   <button
                     key={node.concept_id}
+                    onClick={() => !isLocked && handleSelectNode(node.concept_id)}
                     disabled={isLocked}
-                    onClick={() => handleSelectNode(node.concept_id)}
-                    className={`w-full flex items-center justify-between p-2 rounded-xl text-xs text-left transition-all ${
+                    className={`w-full flex items-center justify-between p-2 rounded-xl text-xs transition-all text-left ${
                       isLocked
-                        ? 'opacity-50 text-ink-muted cursor-not-allowed'
+                        ? 'opacity-40 text-[#52525B] cursor-not-allowed'
                         : isSelected
-                        ? 'bg-brand-600 text-white font-semibold shadow-sm'
-                        : 'text-ink-primary hover:bg-surface-container'
+                        ? 'bg-[#211C38] text-[#8B7CFF] border border-[#49406F] font-bold shadow-xs'
+                        : 'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#16161B]'
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       {isMastered ? (
-                        <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-emerald-300' : 'text-emerald-600'}`} />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                       ) : isLocked ? (
-                        <Lock className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <Lock className="w-3.5 h-3.5 text-[#52525B] shrink-0" />
                       ) : (
-                        <div className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-white animate-ping' : 'bg-brand-600'}`} />
+                        <BookOpen className="w-3.5 h-3.5 text-[#8B7CFF] shrink-0" />
                       )}
                       <span className="truncate">{node.title}</span>
                     </div>
@@ -233,15 +219,18 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Footer System Status */}
+      {/* Progress Footer */}
       {!isCollapsed && (
-        <div className="pt-3 border-t border-surface-variant space-y-2">
-          <Badge variant="ai" size="sm" className="w-full justify-center">
-            <Brain className="w-3.5 h-3.5 text-brand-600" />
-            Deterministic Engine v1.0
-          </Badge>
+        <div className="p-3.5 rounded-2xl bg-[#16161B] border border-[#292932] space-y-2">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#A1A1AA]">
+            <span>Path Completion</span>
+            <span className="text-[#8B7CFF] font-bold">{overallProgress}%</span>
+          </div>
+          <ProgressBar progress={overallProgress} />
         </div>
       )}
     </aside>
   );
 }
+
+export default Sidebar;

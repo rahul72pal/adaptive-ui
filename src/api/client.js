@@ -22,11 +22,23 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor
+// Response Interceptor: Graceful error handling & 401 session expiration handling
 apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    console.warn('API call failed or network issue, using fallback mode if available:', error?.message);
+    if (error?.response?.status === 401) {
+      const requestUrl = error?.config?.url || '';
+      const isAuthAttempt = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register');
+      
+      // If a regular authenticated endpoint returns 401, the token is invalid or expired
+      if (!isAuthAttempt) {
+        localStorage.removeItem('adaptive_access_token');
+        localStorage.removeItem('adaptive_user_data');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('adaptive:auth_unauthorized', { detail: { error } }));
+        }
+      }
+    }
     return Promise.reject(error);
   }
 );

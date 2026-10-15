@@ -9,25 +9,6 @@ try {
   savedUser = null;
 }
 
-const savedTopicsStr = localStorage.getItem('adaptive_custom_topics');
-let initialTopics = [];
-
-try {
-  if (savedTopicsStr) {
-    const parsed = JSON.parse(savedTopicsStr);
-    if (Array.isArray(parsed)) initialTopics = parsed;
-  }
-} catch (e) {}
-
-const savedCompletedTopicsStr = localStorage.getItem('adaptive_completed_topics');
-let initialCompletedTopics = [];
-try {
-  if (savedCompletedTopicsStr) {
-    const parsed = JSON.parse(savedCompletedTopicsStr);
-    if (Array.isArray(parsed)) initialCompletedTopics = parsed;
-  }
-} catch (e) {}
-
 // Read URL hash on initial load
 const hashTab = typeof window !== 'undefined' && window.location.hash ? window.location.hash.replace('#/', '').replace('#', '') : null;
 const validTabs = ['onboarding', 'diagnostic', 'path', 'workspace', 'analytics'];
@@ -39,10 +20,12 @@ const initialState = {
   token: savedToken || null,
   isAuthenticated: !!savedToken,
   isAuthModalOpen: false,
-  topics: initialTopics,
-  completedTopics: initialCompletedTopics,
-  activeTopic: initialTopics[0]?.id || '',
+  topics: [],
+  completedTopics: [],
+  activeTopic: '',
   targetLevel: 'expert',
+  targetLanguage: 'python', // python, cpp, js
+  explanationLanguage: 'english', // english, hinglish
   activeTab: initialActiveTab, // onboarding, diagnostic, path, workspace, analytics
 };
 
@@ -53,6 +36,14 @@ const userSlice = createSlice({
     setUserId: (state, action) => {
       state.userId = action.payload;
     },
+    setUserTopics: (state, action) => {
+      const topicList = action.payload || [];
+      state.topics = topicList;
+      state.completedTopics = topicList.filter((t) => t.is_completed).map((t) => t.id);
+      if (!state.activeTopic && topicList.length > 0) {
+        state.activeTopic = topicList[0].id;
+      }
+    },
     setActiveTopic: (state, action) => {
       state.activeTopic = action.payload;
     },
@@ -60,8 +51,6 @@ const userSlice = createSlice({
       const topicId = action.payload;
       state.topics = state.topics.filter((t) => t.id !== topicId);
       state.completedTopics = state.completedTopics.filter((t) => t !== topicId);
-      localStorage.setItem('adaptive_custom_topics', JSON.stringify(state.topics));
-      localStorage.setItem('adaptive_completed_topics', JSON.stringify(state.completedTopics));
       if (state.activeTopic === topicId) {
         state.activeTopic = state.topics[0]?.id || '';
       }
@@ -70,13 +59,11 @@ const userSlice = createSlice({
       const topicId = action.payload;
       if (topicId && !state.completedTopics.includes(topicId)) {
         state.completedTopics.push(topicId);
-        localStorage.setItem('adaptive_completed_topics', JSON.stringify(state.completedTopics));
       }
     },
     resetTopicDiagnostic: (state, action) => {
       const topicId = action.payload;
       state.completedTopics = state.completedTopics.filter((t) => t !== topicId);
-      localStorage.setItem('adaptive_completed_topics', JSON.stringify(state.completedTopics));
     },
     addCustomTopic: (state, action) => {
       const topicName = action.payload.trim();
@@ -86,17 +73,33 @@ const userSlice = createSlice({
       if (!existing) {
         const newTopic = {
           id: topicId,
+          topic_slug: topicId,
           name: topicName,
+          canonical_topic: topicName,
           icon: '🎓',
           description: `Custom AI-generated learning curriculum for ${topicName}.`,
+          is_completed: false,
         };
         state.topics.push(newTopic);
-        localStorage.setItem('adaptive_custom_topics', JSON.stringify(state.topics));
       }
       state.activeTopic = topicId;
     },
+    setTopicModeChoice: (state, action) => {
+      const { topicId, modeChoice, sessionId } = action.payload;
+      const topic = state.topics.find((t) => t.id === topicId || t.topic_slug === topicId);
+      if (topic) {
+        topic.mode_choice = modeChoice;
+        if (sessionId) topic.diagnostic_session_id = sessionId;
+      }
+    },
     setTargetLevel: (state, action) => {
       state.targetLevel = action.payload;
+    },
+    setTargetLanguage: (state, action) => {
+      state.targetLanguage = action.payload;
+    },
+    setExplanationLanguage: (state, action) => {
+      state.explanationLanguage = action.payload;
     },
     setActiveTab: (state, action) => {
       state.activeTab = action.payload;
@@ -115,6 +118,9 @@ const userSlice = createSlice({
       state.isAuthenticated = true;
       state.isAuthModalOpen = false;
       state.activeTab = 'onboarding';
+      state.topics = [];
+      state.completedTopics = [];
+      state.activeTopic = '';
 
       localStorage.setItem('adaptive_access_token', token);
       localStorage.setItem('adaptive_user_data', JSON.stringify(user));
@@ -124,6 +130,9 @@ const userSlice = createSlice({
       state.user = null;
       state.userId = 'user_lumina_01';
       state.isAuthenticated = false;
+      state.topics = [];
+      state.completedTopics = [];
+      state.activeTopic = '';
 
       localStorage.removeItem('adaptive_access_token');
       localStorage.removeItem('adaptive_user_data');
@@ -133,12 +142,16 @@ const userSlice = createSlice({
 
 export const {
   setUserId,
+  setUserTopics,
   setActiveTopic,
   removeTopic,
   markTopicDiagnosticCompleted,
   resetTopicDiagnostic,
   addCustomTopic,
+  setTopicModeChoice,
   setTargetLevel,
+  setTargetLanguage,
+  setExplanationLanguage,
   setActiveTab,
   openAuthModal,
   closeAuthModal,

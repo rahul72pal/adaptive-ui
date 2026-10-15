@@ -1,16 +1,17 @@
 import React from 'react';
 
 export function Badge({ children, variant = 'default', size = 'md', className = '' }) {
-  const baseStyles = 'inline-flex items-center font-medium rounded-full transition-all';
+  const baseStyles = 'inline-flex items-center font-medium rounded-full transition-all select-none';
   
   const variants = {
-    default: 'bg-surface-container text-ink-primary border border-surface-variant',
-    primary: 'bg-brand-100 text-brand-700 border border-brand-200',
-    ai: 'bg-brand-50 text-brand-600 border border-brand-200 shadow-sm',
-    success: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-    warning: 'bg-amber-50 text-amber-700 border border-amber-200',
-    danger: 'bg-rose-50 text-rose-700 border border-rose-200',
-    locked: 'bg-gray-100 text-gray-500 border border-gray-200',
+    default: 'bg-[#16161B] text-[#A1A1AA] border border-[#222229]',
+    primary: 'bg-[#211C38] text-[#8B7CFF] border border-[#49406F]',
+    ai: 'bg-[#211C38] text-[#8B7CFF] border border-[#49406F]',
+    outline: 'bg-transparent text-[#8B7CFF] border border-[#49406F]',
+    success: 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/60',
+    warning: 'bg-amber-950/60 text-amber-400 border border-amber-800/60',
+    danger: 'bg-rose-950/60 text-rose-400 border border-rose-800/60',
+    locked: 'bg-[#16161B] text-[#52525B] border border-[#222229]',
   };
 
   const sizes = {
@@ -25,3 +26,5 @@ export function Badge({ children, variant = 'default', size = 'md', className = 
     </span>
   );
 }
+
+export default Badge;

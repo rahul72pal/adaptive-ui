@@ -4,19 +4,29 @@ import { useDispatch, useSelector } from 'react-redux';
 import { learningApi } from '../api/learningApi';
 import { setLearningPath } from '../features/learning/learningSlice';
 
+import { setActiveTab } from '../features/user/userSlice';
+
 export function useLearningPath() {
   const dispatch = useDispatch();
-  const { userId, activeTopic, targetLevel, isAuthenticated, activeTab, completedTopics = [] } = useSelector((state) => state.user);
+  const { userId, activeTopic, targetLevel, targetLanguage, explanationLanguage, isAuthenticated, activeTab, completedTopics = [] } = useSelector((state) => state.user);
   const { sessionId } = useSelector((state) => state.diagnostic);
 
   const generateMutation = useMutation({
-    mutationFn: () => learningApi.generatePath({
-      topic: activeTopic,
-      target_level: targetLevel,
-      diagnostic_session_id: sessionId || null,
-    }),
+    mutationFn: (topicOverride) => {
+      const topicToUse = (typeof topicOverride === 'string' && topicOverride.trim()) ? topicOverride.trim() : activeTopic;
+      return learningApi.generatePath({
+        topic: topicToUse,
+        target_level: targetLevel,
+        diagnostic_session_id: sessionId || null,
+        language: targetLanguage || 'python',
+        explanation_language: explanationLanguage || 'english',
+      });
+    },
     onSuccess: (data) => {
-      if (data) dispatch(setLearningPath(data));
+      if (data) {
+        dispatch(setLearningPath(data));
+      }
+      dispatch(setActiveTab('path'));
     },
   });
 
@@ -34,12 +44,41 @@ export function useLearningPath() {
     }
   }, [query.data, dispatch]);
 
+  const completeLevelMutation = useMutation({
+    mutationFn: (learningPathId) => learningApi.completeLevel({ learning_path_id: learningPathId }),
+    onSuccess: (data) => {
+      if (data) {
+        dispatch(setLearningPath(data));
+      }
+    },
+  });
+
+  const { pathId } = useSelector((state) => state.learning);
+
+  const completeNodeMutation = useMutation({
+    mutationFn: ({ topic, conceptId, learningPathId }) => learningApi.completeNode({
+      topic: topic || activeTopic,
+      concept_id: conceptId,
+      learning_path_id: learningPathId || pathId || null,
+    }),
+    onSuccess: (data) => {
+      if (data) {
+        dispatch(setLearningPath(data));
+      }
+    },
+  });
+
   return {
     pathData: query.data,
-    isLoading: query.isLoading || generateMutation.isPending,
+    isLoading: query.isLoading || generateMutation.isPending || completeLevelMutation.isPending || completeNodeMutation.isPending,
     refetch: query.refetch,
     generatePath: generateMutation.mutate,
     isGenerating: generateMutation.isPending,
+    completeLevel: completeLevelMutation.mutate,
+    isCompletingLevel: completeLevelMutation.isPending,
+    completeNode: completeNodeMutation.mutateAsync,
+    isCompletingNode: completeNodeMutation.isPending,
   };
 }
+
 

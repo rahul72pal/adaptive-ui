@@ -27,6 +27,7 @@ const diagnosticSlice = createSlice({
           sender: 'ai',
           text: firstQ,
           options: action.payload.options || [],
+          userInput: action.payload.user_input || action.payload.userInput || null,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }
       ];
@@ -55,6 +56,7 @@ const diagnosticSlice = createSlice({
           sender: 'ai',
           text: qText,
           options: action.payload.options || [],
+          userInput: action.payload.user_input || action.payload.userInput || null,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         });
       }
@@ -71,6 +73,27 @@ const diagnosticSlice = createSlice({
         summary: 'Opted out as complete beginner. Learning path starts from absolute fundamentals.'
       };
     },
+    loadExistingSession: (state, action) => {
+      const { sessionId, turn, turns_used, is_complete, knowledge_profile, messages, turn_history, current_question } = action.payload;
+      state.sessionId = sessionId;
+      state.status = is_complete ? 'completed' : 'chatting';
+      state.turn = turn || turns_used || 1;
+      state.knowledgeProfile = knowledge_profile || null;
+      state.turnHistory = turn_history || [];
+
+      if (messages && messages.length > 0) {
+        state.messages = messages;
+      } else if (current_question) {
+        state.messages = [
+          {
+            id: 'm_0',
+            sender: 'ai',
+            text: current_question,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }
+        ];
+      }
+    },
     resetDiagnostic: (state) => {
       return initialState;
     }
@@ -84,6 +107,7 @@ export const {
   updateTurn,
   completeDiagnostic,
   skipDiagnostic,
+  loadExistingSession,
   resetDiagnostic,
 } = diagnosticSlice.actions;
 

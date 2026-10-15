@@ -3,70 +3,81 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import { questionApi } from '../api/questionApi';
 import {
-  setQuestionBatch,
+  setCurrentQuestion,
   setAttemptResult,
+  setNextQuestion,
   setIsSubmitting,
   setNodeCompleted
 } from '../features/questions/questionsSlice';
-import { updateNodeStatus } from '../features/learning/learningSlice';
+import { updateNodeStatus, setLearningPath } from '../features/learning/learningSlice';
 import confetti from 'canvas-confetti';
 
-export function useQuestionAttempt(conceptId) {
+export function useQuestionAttempt(conceptId, node = null) {
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
-  const { userId, activeTopic } = useSelector((state) => state.user);
+  const { userId, activeTopic, targetLanguage, explanationLanguage } = useSelector((state) => state.user);
   const {
-    batchQuestions,
-    batchIndex,
-    currentRound = 1,
-    totalRounds = 5,
-    questionsPerRound = 3,
-    totalNodeQuestions = 15,
-    totalBatchQuestions,
     currentQuestion,
     userAnswer,
     attemptResult,
-    isSubmitting
+    isSubmitting,
+    currentQuestionCount = 1,
+    targetQuestionCount = 5,
+    difficulty = 3,
+    nodeCompleted = false,
   } = useSelector((state) => state.questions);
 
-  const batchQuery = useQuery({
-    queryKey: ['questionBatch', activeTopic, conceptId, currentRound],
-    queryFn: () => questionApi.getQuestionBatch({
+  const activeQ = currentQuestion;
+
+  const conceptType = node?.concept_type || 'conceptual';
+
+  const isPracticeNode = node?.node_type === 'practice' || node?.type === 'practice';
+
+  const singleQuestionQuery = useQuery({
+    queryKey: ['singleQuestion', activeTopic, conceptId, difficulty, currentQuestionCount, targetLanguage, explanationLanguage],
+    queryFn: () => questionApi.generateQuestion({
       topic: activeTopic,
       concept_id: conceptId,
-      count: 3
+      concept_type: conceptType,
+      difficulty,
+      language: targetLanguage || 'python',
+      explanation_language: explanationLanguage || 'english',
     }),
-    enabled: !!conceptId && !!activeTopic,
-    staleTime: 1000 * 60 * 30,
-    gcTime: 1000 * 60 * 60,
+    enabled: !!conceptId && !!activeTopic && !currentQuestion && !nodeCompleted && isPracticeNode,
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 30,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
   });
 
-  useEffect(() => {
-    if (
-      batchQuery.data?.questions &&
-      batchQuery.data.questions.length > 0 &&
-      (batchQuestions.length === 0 || currentQuestion === null)
-    ) {
-      dispatch(setQuestionBatch(batchQuery.data.questions));
-    }
-  }, [batchQuery.data, batchQuestions.length, currentQuestion, dispatch]);
 
-  const activeQ = currentQuestion || (batchQuestions && batchQuestions[batchIndex]) || null;
+  useEffect(() => {
+    if (singleQuestionQuery.data && !currentQuestion) {
+      dispatch(setCurrentQuestion(singleQuestionQuery.data));
+    }
+  }, [singleQuestionQuery.data, currentQuestion, dispatch]);
+
+  const effectiveTargetCount = node?.target_question_count || targetQuestionCount || 3;
 
   const submitMutation = useMutation({
-    mutationFn: ({ answer }) => {
+    mutationFn: ({ answer, test_run_count = 0, test_cases_passed = null, total_test_cases = null }) => {
       dispatch(setIsSubmitting(true));
-      const qId = activeQ?._id || activeQ?.id || `q_${conceptId}_r${currentRound}_${batchIndex + 1}`;
+      const qId = activeQ?._id || activeQ?.id || `q_${conceptId}_${currentQuestionCount}`;
       return questionApi.submitAttempt({
         topic: activeTopic,
         user_id: userId,
         question_id: qId,
         concept_id: conceptId,
-        difficulty: activeQ?.difficulty || 3,
+        difficulty: activeQ?.difficulty || difficulty || 3,
         answer,
+        current_question_count: currentQuestionCount,
+        target_question_count: effectiveTargetCount,
+        test_run_count,
+        test_cases_passed,
+        total_test_cases,
+        language: targetLanguage || 'python',
+        explanation_language: explanationLanguage || 'english',
       });
     },
     onSuccess: (data) => {
@@ -74,14 +85,24 @@ export function useQuestionAttempt(conceptId) {
       const normalizedData = {
         ...data,
         passed: isPassed,
+        target_question_count: data.target_question_count || effectiveTargetCount,
         feedback: data.feedback || (isPassed ? 'Correct answer! Concept mastery updated.' : 'Incorrect answer. Review concept guidelines and try again.'),
       };
       dispatch(setAttemptResult(normalizedData));
-      
-      const isLastQuestionOfRound = batchIndex >= (batchQuestions?.length || 3) - 1;
-      const isFinalQuestionOfNode = (currentRound >= totalRounds && isLastQuestionOfRound) || data.mastery_update?.status === 'mastered';
 
-      if (isFinalQuestionOfNode) {
+      if (data.learning_path_update && isPassed) {
+        dispatch(setLearningPath(data.learning_path_update));
+      }
+
+      const isFinal = Boolean(
+        isPassed && (
+          data.is_concept_completed ||
+          data.mastery_update?.status === 'mastered' ||
+          (data.correct_count && data.correct_count >= effectiveTargetCount)
+        )
+      );
+
+      if (isFinal) {
         dispatch(setNodeCompleted(true));
         dispatch(updateNodeStatus({
           conceptId,
@@ -108,28 +129,61 @@ export function useQuestionAttempt(conceptId) {
     }
   });
 
-  const globalQuestionIndex = Math.min(totalNodeQuestions, (currentRound - 1) * questionsPerRound + (batchIndex + 1));
-  const isLastQuestion = currentRound >= totalRounds && batchIndex >= (batchQuestions?.length || 3) - 1;
-  const isSubmittingState = submitMutation.isPending || isSubmitting;
+  const nextQuestionMutation = useMutation({
+    mutationFn: async () => {
+      if (attemptResult?.next_question) {
+        return attemptResult.next_question;
+      }
+      return await questionApi.generateQuestion({
+        topic: activeTopic,
+        concept_id: conceptId,
+        concept_type: conceptType,
+        difficulty: attemptResult?.next_difficulty || difficulty || 3,
+        language: targetLanguage || 'python',
+        explanation_language: explanationLanguage || 'english',
+      });
+    },
+    onSuccess: (nextQ) => {
+      dispatch(setNextQuestion(nextQ));
+    }
+  });
 
-  const submitAnswer = (answer) => {
-    if (isSubmittingState || !answer) return;
-    submitMutation.mutate({ answer });
+  const submitAnswer = (answer, metrics = {}) => {
+    if (submitMutation.isPending || isSubmitting || !answer) return;
+    submitMutation.mutate({
+      answer,
+      test_run_count: metrics.test_run_count || 0,
+      test_cases_passed: metrics.test_cases_passed ?? null,
+      total_test_cases: metrics.total_test_cases ?? null,
+    });
+  };
+
+
+  const retryQuestion = () => {
+    dispatch(setAttemptResult(null));
+  };
+
+  const handleNextQuestion = () => {
+    if (attemptResult?.next_question) {
+      dispatch(setNextQuestion(attemptResult.next_question));
+    } else {
+      nextQuestionMutation.mutate();
+    }
   };
 
   return {
     question: activeQ,
-    isLoadingQuestion: batchQuery.isLoading && (!batchQuestions || batchQuestions.length === 0),
+    isLoadingQuestion: singleQuestionQuery.isLoading && !activeQ,
     userAnswer,
     attemptResult,
-    batchIndex: batchIndex + 1,
-    currentRound,
-    totalRounds,
-    globalQuestionIndex,
-    totalNodeQuestions: 15,
-    totalBatchQuestions: batchQuestions?.length || 3,
-    isLastQuestion,
-    isSubmitting: isSubmittingState,
+    currentQuestionCount: attemptResult?.current_question_count || currentQuestionCount,
+    targetQuestionCount: attemptResult?.target_question_count || effectiveTargetCount,
+    nodeCompleted,
+    isSubmitting: submitMutation.isPending || isSubmitting,
+    isFetchingNext: nextQuestionMutation.isPending,
     submitAnswer,
+    fetchNextQuestion: handleNextQuestion,
+    retryQuestion,
   };
 }
+

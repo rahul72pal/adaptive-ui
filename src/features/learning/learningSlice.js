@@ -17,6 +17,10 @@ const DEFAULT_DESCRIPTIONS = {
 
 const initialState = {
   pathId: null,
+  currentLevel: 'beginner',
+  targetLevel: 'expert',
+  completedLevels: [],
+  availableNodes: [],
   currentNodeId: null,
   selectedNodeId: null,
   nodes: [],
@@ -28,26 +32,40 @@ const learningSlice = createSlice({
   reducers: {
     setLearningPath: (state, action) => {
       if (!action.payload) return;
-      const rawNodes = action.payload.nodes || [];
+      const rawNodes = action.payload.nodes;
       const topic = action.payload.topic || 'learning';
 
-      const normalizedNodes = rawNodes.map((node) => {
-        const title = node.title || formatTitle(node.concept_id);
-        const description = node.description || DEFAULT_DESCRIPTIONS[node.concept_id] || `Mastering ${title} in ${topic}.`;
-        return {
-          ...node,
-          title,
-          description,
-          status: node.status || 'learning',
-          estimated_minutes: node.estimated_minutes || 20,
-          depends_on: node.depends_on || [],
-        };
-      });
+      if (rawNodes && Array.isArray(rawNodes) && rawNodes.length > 0) {
+        const normalizedNodes = rawNodes.map((node) => {
+          const cid = node.concept_id || node.id;
+          const title = node.title || formatTitle(cid);
+          const description = node.description || DEFAULT_DESCRIPTIONS[cid] || `Mastering ${title} in ${topic}.`;
+          return {
+            ...node,
+            concept_id: cid,
+            title,
+            description,
+            level: node.level || action.payload.current_level || 'beginner',
+            node_type: node.node_type || (node.type === 'practice' ? 'practice' : 'learning'),
+            status: node.status || 'learning',
+            estimated_minutes: node.estimated_minutes || 15,
+            target_question_count: node.target_question_count || 5,
+            depends_on: node.depends_on || [],
+          };
+        });
+        state.nodes = normalizedNodes;
+      }
 
-      state.pathId = action.payload._id;
-      state.currentNodeId = action.payload.current_node || (normalizedNodes[0]?.concept_id || null);
-      state.selectedNodeId = state.selectedNodeId || state.currentNodeId || (normalizedNodes[0]?.concept_id || null);
-      state.nodes = normalizedNodes;
+      if (action.payload._id) state.pathId = action.payload._id;
+      if (action.payload.current_level) state.currentLevel = action.payload.current_level;
+      if (action.payload.target_level) state.targetLevel = action.payload.target_level;
+      if (action.payload.completed_levels) state.completedLevels = action.payload.completed_levels;
+      if (action.payload.available_nodes) state.availableNodes = action.payload.available_nodes;
+      if (action.payload.current_node) state.currentNodeId = action.payload.current_node;
+
+      if (!state.selectedNodeId && state.currentNodeId) {
+        state.selectedNodeId = state.currentNodeId;
+      }
     },
     setSelectedNodeId: (state, action) => {
       state.selectedNodeId = action.payload;
@@ -59,9 +77,39 @@ const learningSlice = createSlice({
         node.status = status;
         if (masteryScore !== undefined) node.mastery_score = masteryScore;
       }
+
+      // Automatically unlock downstream nodes whose dependencies are satisfied
+      const completedSet = new Set(
+        state.nodes.filter(n => n.status === 'known' || n.status === 'mastered').map(n => n.concept_id)
+      );
+
+      state.nodes.forEach(n => {
+        if (n.status === 'locked') {
+          const deps = n.depends_on || [];
+          if (deps.length === 0 || deps.every(depId => completedSet.has(depId))) {
+            n.status = 'learning';
+          }
+        }
+      });
+
+      // Recalculate available nodes
+      state.availableNodes = state.nodes
+        .filter(n => n.status === 'learning' || n.status === 'partial')
+        .map(n => n.concept_id);
     },
+    resetLearningPath: (state) => {
+      state.pathId = null;
+      state.currentLevel = 'beginner';
+      state.targetLevel = 'expert';
+      state.completedLevels = [];
+      state.availableNodes = [];
+      state.currentNodeId = null;
+      state.selectedNodeId = null;
+      state.nodes = [];
+    }
   },
 });
 
-export const { setLearningPath, setSelectedNodeId, updateNodeStatus } = learningSlice.actions;
+export const { setLearningPath, setSelectedNodeId, updateNodeStatus, resetLearningPath } = learningSlice.actions;
 export default learningSlice.reducer;
+

@@ -1,22 +1,45 @@
 import { apiClient } from './client';
 
 export const questionApi = {
-  generateQuestion: async ({ topic, concept_id = 'fundamentals', concept_type = 'conceptual', difficulty = 3 }) => {
+  /**
+   * Generates or retrieves a single question non-streamingly in one API request.
+   * Endpoint: POST /api/questions/generate
+   */
+  generateQuestion: async ({ topic, concept_id = 'fundamentals', concept_type = 'conceptual', difficulty = 3, language = 'python', explanation_language = 'english' }) => {
     try {
       const selectedTopic = (topic || 'javascript').toLowerCase();
-      return await apiClient.post('/questions/generate', {
+      const payload = {
         topic: selectedTopic,
         concept_id,
         concept_type,
-        difficulty,
-      });
+        difficulty: typeof difficulty === 'number' ? difficulty : 3,
+        language,
+        explanation_language,
+      };
+      return await apiClient.post('/questions/generate', payload);
     } catch (err) {
       console.error('[questionApi.generateQuestion] API Error:', err);
       throw err;
     }
   },
 
-  getQuestionBatch: async ({ topic, concept_id = 'fundamentals', concept_type = 'conceptual', difficulty = 3, count = 3 }) => {
+  /**
+   * Legacy compatibility wrapper for non-streaming question generation.
+   */
+  getQuestionStream: async (params, onEvent, onError) => {
+    try {
+      const question = await questionApi.generateQuestion(params);
+      if (onEvent) {
+        onEvent({ event: 'complete', question });
+      }
+      return question;
+    } catch (err) {
+      if (onError) onError?.(err);
+      throw err;
+    }
+  },
+
+  getQuestionBatch: async ({ topic, concept_id = 'fundamentals', concept_type = 'conceptual', difficulty = 3, count = 3, language = 'python', explanation_language = 'english' }) => {
     try {
       const selectedTopic = (topic || 'javascript').toLowerCase();
       return await apiClient.post('/questions/batch', {
@@ -25,6 +48,8 @@ export const questionApi = {
         concept_type,
         difficulty,
         count,
+        language,
+        explanation_language,
       });
     } catch (err) {
       console.error('[questionApi.getQuestionBatch] API Error:', err);
@@ -32,7 +57,20 @@ export const questionApi = {
     }
   },
 
-  submitAttempt: async ({ topic, concept_id = 'fundamentals', question_id, answer, difficulty = 1 }) => {
+  submitAttempt: async ({
+    topic,
+    concept_id = 'fundamentals',
+    question_id,
+    answer,
+    difficulty = 1,
+    current_question_count = 1,
+    target_question_count = 3,
+    test_run_count = 0,
+    test_cases_passed = null,
+    total_test_cases = null,
+    language = 'python',
+    explanation_language = 'english',
+  }) => {
     try {
       const selectedTopic = (topic || 'javascript').toLowerCase();
       return await apiClient.post('/attempts/submit', {
@@ -41,6 +79,13 @@ export const questionApi = {
         topic: selectedTopic,
         difficulty: typeof difficulty === 'number' ? difficulty : 3,
         answer: String(answer),
+        current_question_count,
+        target_question_count,
+        test_run_count,
+        test_cases_passed,
+        total_test_cases,
+        language,
+        explanation_language,
       });
     } catch (err) {
       console.error('[questionApi.submitAttempt] API Error:', err);
@@ -48,3 +93,5 @@ export const questionApi = {
     }
   }
 };
+
+

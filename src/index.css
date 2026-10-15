@@ -3,74 +3,109 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-50: #f5f3ff;
-  --color-brand-100: #e9ddff;
-  --color-brand-200: #cfbcff;
-  --color-brand-300: #b69df8;
-  --color-brand-400: #9a79f0;
-  --color-brand-500: #7c52e4;
-  --color-brand-600: #6750a4;
-  --color-brand-700: #4f378a;
-  --color-brand-800: #3a266a;
-  --color-brand-900: #22005d;
+  /* Core Surface Tokens (Near-black and charcoal surfaces) */
+  --color-bg-app: #09090B;
+  --color-panel-primary: #111114;
+  --color-panel-secondary: #16161B;
+  --color-panel-elevated: #1C1C23;
+  --color-panel-hover: #24242D;
+  --color-border-primary: #292932;
+  --color-border-subtle: #222229;
 
-  --color-surface-bright: #fdf7ff;
-  --color-surface-dim: #ded8e0;
-  --color-surface-container: #f2ecf4;
-  --color-surface-high: #ece6ee;
-  --color-surface-highest: #e6e0e9;
-  --color-surface-variant: #e6e0e9;
+  /* Typography Tokens */
+  --color-ink-primary: #F4F4F5;
+  --color-ink-secondary: #A1A1AA;
+  --color-ink-muted: #71717A;
+  --color-ink-disabled: #52525B;
 
-  --color-ink-primary: #1d1b20;
-  --color-ink-secondary: #494551;
-  --color-ink-muted: #7a7582;
+  /* Lumina Brand Tokens */
+  --color-brand-primary: #8B7CFF;
+  --color-brand-strong: #6558F5;
+  --color-brand-hover: #A397FF;
+  --color-brand-surface: #211C38;
+  --color-brand-border: #49406F;
+
+  /* Tailwind Compatibility Brand Scale */
+  --color-brand-50: #181528;
+  --color-brand-100: #211C38;
+  --color-brand-200: #352B5B;
+  --color-brand-300: #49406F;
+  --color-brand-400: #6558F5;
+  --color-brand-500: #8B7CFF;
+  --color-brand-600: #6558F5;
+  --color-brand-700: #5144db;
+  --color-brand-800: #3d32ab;
+  --color-brand-900: #211C38;
+
+  /* Surface Scale Compatibility */
+  --color-surface-bright: #1C1C23;
+  --color-surface-dim: #09090B;
+  --color-surface-container: #16161B;
+  --color-surface-high: #1C1C23;
+  --color-surface-highest: #24242D;
+  --color-surface-variant: #222229;
+
+  /* Semantic Status Tokens */
+  --color-semantic-success: #34D399;
+  --color-semantic-warning: #FBBF24;
+  --color-semantic-error: #F87171;
+  --color-semantic-info: #60A5FA;
 
   --font-sans: 'Geist', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
-  --shadow-subtle: 0 4px 12px rgba(0, 0, 0, 0.03);
-  --shadow-elevated: 0 12px 32px rgba(0, 0, 0, 0.08);
-  --shadow-glow: 0 0 20px rgba(103, 80, 164, 0.25);
+  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-elevated: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(139, 124, 255, 0.15);
 }
 
 @layer base {
   :root {
-    --color-primary: #4f378a;
-    --color-primary-container: #6750a4;
-    --color-surface-bg: #fdf7ff;
+    --bg-app: #09090B;
+    --panel-primary: #111114;
+    --panel-secondary: #16161B;
+    --panel-elevated: #1C1C23;
+    --panel-hover: #24242D;
+    --border-primary: #292932;
+    --border-subtle: #222229;
+    --brand-primary: #8B7CFF;
+    --brand-strong: #6558F5;
+    --brand-hover: #A397FF;
+    --brand-surface: #211C38;
+    --brand-border: #49406F;
+    --text-primary: #F4F4F5;
+    --text-secondary: #A1A1AA;
+    --text-muted: #71717A;
   }
 
   body {
     font-family: 'Geist', 'Inter', system-ui, sans-serif;
-    background-color: #f8f6fb;
-    color: #1d1b20;
+    background-color: #09090B;
+    color: #F4F4F5;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
 }
 
-/* Glassmorphism & Custom Styling */
+/* Linear / Vercel-inspired Surfaces */
 .glass-card {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(230, 224, 233, 0.8);
+  background: #111114;
+  border: 1px solid #222229;
 }
 
 .gradient-btn {
-  background: linear-gradient(135deg, #4f378a 0%, #6750a4 100%);
-  color: white;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 14px rgba(79, 55, 138, 0.25);
+  background: #6558F5;
+  color: #ffffff;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .gradient-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(79, 55, 138, 0.35);
-  filter: brightness(1.05);
+  background: #7568ff;
+  box-shadow: 0 2px 8px rgba(101, 88, 245, 0.25);
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #4f378a 0%, #7c52e4 100%);
+  background: linear-gradient(135deg, #F4F4F5 0%, #8B7CFF 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -94,14 +129,14 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #09090B;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbc4d2;
+  background: #292932;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #7a7582;
+  background: #3E3E4A;
 }
