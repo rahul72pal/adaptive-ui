@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { streamFetch } from './streamClient';
 
 export const questionApi = {
   /**
@@ -21,6 +22,28 @@ export const questionApi = {
       console.error('[questionApi.generateQuestion] API Error:', err);
       throw err;
     }
+  },
+
+  /**
+   * Streams a question through the split tool pipeline.
+   * Events: message_start | token | question_ready | meta | test_cases |
+   *         complete | cached | error
+   * Endpoint: POST /api/questions/generate/stream
+   */
+  generateQuestionStream: async (
+    { topic, concept_id = 'fundamentals', concept_type = 'conceptual', difficulty = 3, language = 'python', explanation_language = 'english' },
+    onEvent,
+    onError
+  ) => {
+    const payload = {
+      topic: (topic || 'javascript').toLowerCase(),
+      concept_id,
+      concept_type,
+      difficulty: typeof difficulty === 'number' ? difficulty : 3,
+      language,
+      explanation_language,
+    };
+    return streamFetch('/questions/generate/stream', payload, onEvent, onError);
   },
 
   /**

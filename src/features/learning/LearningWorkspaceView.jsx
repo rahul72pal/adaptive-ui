@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useQuestionAttempt } from '../../hooks/useQuestionAttempt';
+import { codeApi } from '../../api/codeApi';
 import { useLessonContent } from '../../hooks/useLessonContent';
 import { useLearningPath } from '../../hooks/useLearningPath';
 import { setUserAnswer, resetBatchProgress, setNodeCompleted } from '../questions/questionsSlice';
@@ -11,6 +12,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
+import LeetCodeEditor from '../../components/LeetCodeEditor';
 import confetti from 'canvas-confetti';
 import {
   Sparkles,
@@ -113,6 +115,8 @@ export function LearningWorkspaceView() {
     nodeCompleted = false,
     isSubmitting,
     isFetchingNext,
+    isStreamingQuestion,
+    streamError,
     submitAnswer,
     fetchNextQuestion,
     retryQuestion,
@@ -184,7 +188,12 @@ export function LearningWorkspaceView() {
     submitAnswerRef.current = submitAnswer;
   }, [submitAnswer]);
 
-  // 1. Worker Setup (Runs once on mount)
+  const testRunCountRef = React.useRef(0);
+  useEffect(() => {
+    testRunCountRef.current = testRunCount;
+  }, [testRunCount]);
+
+  // 1. Worker Setup (Runs once; Pyodide is expensive to reload per run)
   useEffect(() => {
     const worker = new Worker('/pyodide.worker.js');
     workerRef.current = worker;
@@ -207,7 +216,7 @@ export function LearningWorkspaceView() {
           const totalTC = data.results?.length || 0;
           const passedTC = data.results?.filter(r => r.passed)?.length || totalTC;
           submitAnswerRef.current(userAnswerRef.current, {
-            test_run_count: testRunCount + 1,
+            test_run_count: testRunCountRef.current + 1,
             test_cases_passed: passedTC,
             total_test_cases: totalTC,
           });
@@ -223,51 +232,144 @@ export function LearningWorkspaceView() {
     return () => {
       worker.terminate();
     };
-  }, [testRunCount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 2. Starter Code Template load karein jab question ya language change ho
+  const defaultStarterCode = useMemo(() => {
+    if (!question) return '';
+    // The generator now owns starter-code completeness (imports + node class
+    // definitions), so prefer it over the hardcoded templates below.
+    if (question.starter_code && String(question.starter_code).trim()) {
+      return question.starter_code;
+    }
+    const currentLang = (targetLanguage || 'python').toLowerCase();
+    if (currentLang === 'cpp') {
+      return question.function_signature
+        ? `#include <iostream>\n#include <vector>\nusing namespace std;\n\n${question.function_signature} {\n    // Write your solution here\n    return 0;\n}`
+        : `#include <iostream>\n#include <vector>\nusing namespace std;\n\nint solution(vector<int>& nums) {\n    // Write your solution here\n    return 0;\n}`;
+    } else if (currentLang === 'js' || currentLang === 'javascript') {
+      return question.function_signature
+        ? `${question.function_signature} {\n    // Write your solution here\n    return 0;\n}`
+        : `function solution(nums) {\n    // Write your solution here\n    return 0;\n}`;
+    } else {
+      return question.function_signature 
+        ? `${question.function_signature}\n    # Write your solution here\n    pass`
+        : `def solution(nums: list[int]) -> int:\n    # Write your solution here\n    pass`;
+    }
+  }, [question?.function_signature, question?.starter_code, targetLanguage]);
+
+  const starterKeyRef = React.useRef(null);
   useEffect(() => {
     if (question && (question.concept_type === 'code' || question.function_signature || !question.options || question.options.length === 0)) {
       const currentLang = (targetLanguage || 'python').toLowerCase();
-      let defaultStarter = '';
-      if (currentLang === 'cpp') {
-        defaultStarter = question.function_signature
-          ? `#include <iostream>\n#include <vector>\nusing namespace std;\n\n${question.function_signature} {\n    // Write your solution here\n    return 0;\n}`
-          : `#include <iostream>\n#include <vector>\nusing namespace std;\n\nint solution(vector<int>& nums) {\n    // Write your solution here\n    return 0;\n}`;
-      } else if (currentLang === 'js' || currentLang === 'javascript') {
-        defaultStarter = question.function_signature
-          ? `${question.function_signature} {\n    // Write your solution here\n    return 0;\n}`
-          : `function solution(nums) {\n    // Write your solution here\n    return 0;\n}`;
-      } else {
-        defaultStarter = question.function_signature 
-          ? `${question.function_signature}\n    # Write your solution here\n    pass`
-          : `def solution(nums: list[int]) -> int:\n    # Write your solution here\n    pass`;
-      }
+      const starterKey = `${question.id || question.concept_id}|${question.function_signature || ''}|${question.starter_code ? 'owned' : 'tpl'}|${currentLang}`;
+      // Streaming patches the question object many times; only seed starter
+      // code once per (question, language) so we never wipe the user's edits.
+      if (starterKeyRef.current === starterKey) return;
+      starterKeyRef.current = starterKey;
       
-      dispatch(setUserAnswer(defaultStarter));
+      dispatch(setUserAnswer(defaultStarterCode));
       setCodeExecutionResults(null);
     }
-  }, [question, targetLanguage, dispatch]);
+  }, [question, targetLanguage, defaultStarterCode, dispatch]);
 
-  // 3. Extract Function Name Helper
+  // 3. Extract Function Name Helper (python / javascript / c++)
+  // Scans the whole signature OR full starter code and takes the LAST named
+  // function, so node-class helpers like `def __init__` are ignored.
   const extractFnName = (sig) => {
     if (!sig) return 'solution';
-    return sig.replace('def ', '').split('(')[0].trim();
+    const s = String(sig);
+    const pick = (re) => {
+      const all = [...s.matchAll(re)]
+        .map((m) => m[1])
+        .filter((n) => n && !n.startsWith('__'));
+      return all.length ? all[all.length - 1] : null;
+    };
+    return (
+      pick(/def\s+([A-Za-z_]\w*)/g) ||
+      pick(/function\s+([A-Za-z_]\w*)/g) ||
+      pick(/(?:const|let|var)\s+([A-Za-z_]\w*)\s*[:=]/g) ||
+      pick(/([A-Za-z_]\w*)\s*\(/g) ||
+      'solution'
+    );
   };
 
-  // 4. Code Run Handler
-  const handleRunBrowserCode = () => {
-    if (!isPyodideReady || isRunningCode) return;
+  const runViaPyodide = (fnName, testCases) => {
+    if (isPyodideReady && workerRef.current) {
+      workerRef.current.postMessage({ userCode: userAnswer, functionName: fnName, testCases });
+      return true;
+    }
+    return false;
+  };
+
+  // 4. Code Run Handler — backend sandbox first, Pyodide fallback for Python.
+  const handleRunBrowserCode = async () => {
+    if (isRunningCode) return;
+    const testCases = question?.test_cases || [];
+    const fnName = extractFnName(question?.function_signature || question?.starter_code);
+    const lang = (targetLanguage || 'python').toLowerCase();
+
     setIsRunningCode(true);
     setCodeExecutionResults(null);
     setTestRunCount((prev) => prev + 1);
 
-    const fnName = extractFnName(question?.function_signature);
-    workerRef.current?.postMessage({
-      userCode: userAnswer,
-      functionName: fnName,
-      testCases: question?.test_cases || []
-    });
+    const finish = (data) => {
+      setIsRunningCode(false);
+      setCodeExecutionResults(data);
+      const totalTC = data?.results?.length || testCases.length || 0;
+      const passedTC = data?.results?.filter((r) => r.passed)?.length || 0;
+      const allPassed = data?.all_passed || data?.allPassed;
+      if (allPassed && submitAnswerRef.current) {
+        submitAnswerRef.current(userAnswerRef.current, {
+          test_run_count: testRunCountRef.current + 1,
+          test_cases_passed: totalTC,
+          total_test_cases: totalTC,
+        });
+        try {
+          confetti({ particleCount: 80, spread: 60 });
+        } catch (err) {
+          console.log('Confetti error:', err);
+        }
+      }
+    };
+
+    try {
+      const res = await codeApi.execute({
+        language: lang,
+        code: userAnswer,
+        function_name: fnName,
+        test_cases: testCases,
+      });
+      if (res?.supported) {
+        finish(res);
+        return;
+      }
+      // Unsupported server-side language → try the browser worker.
+      if (lang === 'python' || lang === 'py') {
+        if (runViaPyodide(fnName, testCases)) return;
+      }
+      setIsRunningCode(false);
+      setCodeExecutionResults({
+        all_passed: false,
+        results: [],
+        total: testCases.length,
+        passed: 0,
+        error: res?.error || 'Server-side execution unavailable for this language.',
+        supported: false,
+      });
+    } catch (err) {
+      if ((lang === 'python' || lang === 'py') && runViaPyodide(fnName, testCases)) return;
+      setIsRunningCode(false);
+      setCodeExecutionResults({
+        all_passed: false,
+        results: [],
+        total: testCases.length,
+        passed: 0,
+        error: String(err?.message || err),
+        supported: false,
+      });
+    }
   };
 
   const prevNodeIdRef = React.useRef(selectedNodeId);
@@ -288,7 +390,9 @@ export function LearningWorkspaceView() {
     setActiveTestCaseTab(0);
     setCodeExecutionResults(null);
     setTestRunCount(0);
-  }, [question]);
+    // keyed by id so streaming token patches don't reset the attempt
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question?.id]);
 
   const handleRetryQuestion = () => {
     setSelectedOption(null);
@@ -314,7 +418,8 @@ export function LearningWorkspaceView() {
       const totalTC = question?.test_cases?.length || 0;
       let passedTC = null;
       if (codeExecutionResults) {
-        passedTC = codeExecutionResults.results?.filter((r) => r.passed)?.length ?? (codeExecutionResults.allPassed ? totalTC : 0);
+        const allPassed = codeExecutionResults.all_passed || codeExecutionResults.allPassed;
+        passedTC = codeExecutionResults.results?.filter((r) => r.passed)?.length ?? (allPassed ? totalTC : 0);
       }
       submitAnswer(userAnswer, {
         test_run_count: testRunCount,
@@ -425,6 +530,18 @@ export function LearningWorkspaceView() {
     : 0;
 
   const isCurrentMastered = (activeNode.status === 'mastered' || activeNode.status === 'known' || isLessonCompleted) && (!attemptResult || attemptResult.passed) && (nodeCompleted || activeNode.status === 'mastered' || activeNode.status === 'known' || isLessonCompleted);
+
+  // A coding question is only truly cleared when every generated test case passes.
+  const isCodeQuestion = !question?.options || question.options.length === 0 || question?.concept_type === 'code' || (question?.test_cases?.length > 0);
+  const hasTestCases = (question?.test_cases?.length || 0) > 0;
+  const testsAllPassed = Boolean(codeExecutionResults?.all_passed || codeExecutionResults?.allPassed);
+  // Never dead-end the learner on a platform limitation (unsupported language,
+  // runner outage) or on a question with no test cases — only a real failed
+  // test run blocks progress. `submit_attempt` re-runs the tests server-side.
+  const runnerUnavailable =
+    codeExecutionResults?.supported === false || codeExecutionResults?.runner_error === true;
+  const testsCleared = !isCodeQuestion || testsAllPassed || !hasTestCases || runnerUnavailable;
+  const canAdvance = !attemptResult || (attemptResult.passed && testsCleared);
 
   return (
     <div className="max-w-[1440px] w-full mx-auto py-4 px-2 space-y-5 animate-fadeIn">
@@ -835,7 +952,13 @@ export function LearningWorkspaceView() {
                 </div>
               </div>
 
-              {isLoadingQuestion || isFetchingNext ? (
+              {streamError && (
+                <div className="mb-3 flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                  <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span className="leading-relaxed">{streamError}</span>
+                </div>
+              )}
+              {isLoadingQuestion ? (
                 <div className="py-12 flex flex-col items-center justify-center text-[#71717A] text-xs gap-3">
                   <Loader2 className="w-6 h-6 text-[#8B7CFF] animate-spin" />
                   <span>Generating client-safe question for {activeNode.title}...</span>
@@ -846,130 +969,87 @@ export function LearningWorkspaceView() {
                   <div className="bg-[#16161B] border border-[#222229] p-4 rounded-xl space-y-1.5">
                     <span className="text-[10px] font-extrabold text-[#8B7CFF] uppercase tracking-wider font-mono flex items-center gap-1">
                       <FileText className="w-3.5 h-3.5 text-[#8B7CFF]" /> Problem Prompt
+                      {(isStreamingQuestion || isFetchingNext) && (
+                        <span className="ml-auto normal-case tracking-normal font-medium text-[#A1A1AA] flex items-center gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin" /> writing…
+                        </span>
+                      )}
                     </span>
                     <div className="text-xs sm:text-sm text-[#F4F4F5] leading-relaxed">
                       <MarkdownRenderer content={question?.markdown || questionText} />
                     </div>
+                    {isCodeQuestion && (isStreamingQuestion || isFetchingNext) && !(question?.test_cases?.length > 0) && (
+                      <div className="text-[10px] text-amber-400/90 font-mono flex items-center gap-1.5 pt-1">
+                        <Loader2 className="w-3 h-3 animate-spin" /> generating test cases…
+                      </div>
+                    )}
                   </div>
 
-                  {/* Render Test Cases if present */}
-                  {question?.test_cases && question.test_cases.length > 0 && (
-                    <div className="space-y-2.5 bg-[#0D0D10] border border-[#222229] p-4 rounded-xl text-[#F4F4F5] shadow-inner">
-                      <div className="flex items-center justify-between border-b border-[#222229] pb-2">
-                        <div className="flex items-center gap-2 text-xs font-extrabold text-emerald-400 uppercase tracking-wider font-mono">
-                          <Terminal className="w-4 h-4 text-emerald-400" />
-                          Test Cases ({question.test_cases.length})
+                  {/* LeetCode Style Code Editor & Execution Console for Code Problems */}
+                  {isCodeQuestion ? (
+                    <LeetCodeEditor
+                      code={userAnswer}
+                      onChange={(val) => dispatch(setUserAnswer(val))}
+                      targetLanguage={targetLanguage}
+                      question={question}
+                      isPyodideReady={isPyodideReady}
+                      isRunningCode={isRunningCode}
+                      onRunCode={handleRunBrowserCode}
+                      codeExecutionResults={codeExecutionResults}
+                      defaultStarterCode={defaultStarterCode}
+                    />
+                  ) : (
+                    /* Render Test Cases if present for non-code questions */
+                    question?.test_cases && question.test_cases.length > 0 && (
+                      <div className="space-y-2.5 bg-[#0D0D10] border border-[#222229] p-4 rounded-xl text-[#F4F4F5] shadow-inner">
+                        <div className="flex items-center justify-between border-b border-[#222229] pb-2">
+                          <div className="flex items-center gap-2 text-xs font-extrabold text-emerald-400 uppercase tracking-wider font-mono">
+                            <Terminal className="w-4 h-4 text-emerald-400" />
+                            Test Cases ({question.test_cases.length})
+                          </div>
+                          <span className="text-[10px] text-[#71717A] font-mono">
+                            {question.execution_method || 'llm_rubric'}
+                          </span>
                         </div>
-                        <span className="text-[10px] text-[#71717A] font-mono">
-                          {question.execution_method || 'llm_rubric'}
-                        </span>
-                      </div>
 
-                      {/* Test Case Tab Selectors */}
-                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                        {question.test_cases.map((tc, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setActiveTestCaseTab(idx)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
-                              activeTestCaseTab === idx
-                                ? 'bg-[#6558F5] text-white shadow-sm ring-1 ring-[#8B7CFF]'
-                                : 'bg-[#16161B] text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#1C1C23]'
-                            }`}
-                          >
-                            Case {idx + 1}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Active Test Case Input & Expected Output Box */}
-                      {question.test_cases[activeTestCaseTab] && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-mono uppercase text-[#71717A] tracking-wider">Input</span>
-                            <div className="bg-[#111114] border border-[#222229] p-2.5 rounded-lg font-mono text-xs text-emerald-400 overflow-x-auto">
-                              {question.test_cases[activeTestCaseTab].input}
-                            </div>
-                          </div>
-
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-mono uppercase text-[#71717A] tracking-wider">Expected Output</span>
-                            <div className="bg-[#111114] border border-[#222229] p-2.5 rounded-lg font-mono text-xs text-cyan-300 overflow-x-auto">
-                              {question.test_cases[activeTestCaseTab].expected_output}
-                            </div>
-                          </div>
+                        {/* Test Case Tab Selectors */}
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                          {question.test_cases.map((tc, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setActiveTestCaseTab(idx)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+                                activeTestCaseTab === idx
+                                  ? 'bg-[#6558F5] text-white shadow-sm ring-1 ring-[#8B7CFF]'
+                                  : 'bg-[#16161B] text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#1C1C23]'
+                              }`}
+                            >
+                              Case {idx + 1}
+                            </button>
+                          ))}
                         </div>
-                      )}
-                    </div>
-                  )}
 
-                  {/* Code Editor Box for Code Problems */}
-                  {(!question?.options || question.options.length === 0 || question?.concept_type === 'code' || question?.test_cases?.length > 0) && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between text-xs text-[#71717A]">
-                        <span className="flex items-center gap-1 font-mono text-[11px] text-[#F4F4F5] font-bold">
-                          <FileCode className="w-3.5 h-3.5 text-[#8B7CFF]" />
-                          {targetLanguage === 'cpp' ? 'solution.cpp' : targetLanguage === 'js' ? 'solution.js' : 'solution.py'}
-                        </span>
-                        <span className="capitalize text-[11px] bg-[#16161B] text-emerald-400 px-2 py-0.5 rounded font-mono font-semibold flex items-center gap-1.5 border border-[#292932]">
-                          <Cpu className="w-3 h-3 text-emerald-400" />
-                          {targetLanguage === 'cpp'
-                            ? 'C++ Evaluation Environment'
-                            : targetLanguage === 'js'
-                            ? 'JavaScript Evaluation Environment'
-                            : isPyodideReady
-                            ? 'Browser Python Runtime Ready'
-                            : 'Loading Python Runtime...'}
-                        </span>
-                      </div>
-
-                      <textarea
-                        rows={10}
-                        value={userAnswer}
-                        onChange={(e) => dispatch(setUserAnswer(e.target.value))}
-                        placeholder={`Write your solution for question ${currentQuestionCount}...`}
-                        className="w-full bg-[#0D0D10] text-emerald-400 font-mono text-xs p-4 rounded-xl focus:outline-none focus:border-[#8B7CFF] focus:ring-1 focus:ring-[#8B7CFF]/30 leading-relaxed placeholder:text-[#52525B] border border-[#222229] shadow-inner"
-                      />
-
-                      {/* Run Code Button */}
-                      <div className="flex items-center justify-between gap-3">
-                        <Button
-                          type="button"
-                          onClick={handleRunBrowserCode}
-                          disabled={!isPyodideReady || isRunningCode || !userAnswer}
-                          size="sm"
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold font-mono text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
-                        >
-                          {isRunningCode ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-white" />}
-                          {isRunningCode ? 'Running in Browser...' : 'Run Test Cases'}
-                        </Button>
-                      </div>
-
-                      {/* Execution Results Display */}
-                      {codeExecutionResults && (
-                        <div className={`p-4 rounded-xl border font-mono text-xs space-y-2 animate-fadeIn ${
-                          codeExecutionResults.allPassed
-                            ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
-                            : 'bg-rose-950/40 border-rose-500/50 text-rose-300'
-                        }`}>
-                          <div className="flex items-center justify-between font-bold">
-                            <span>{codeExecutionResults.allPassed ? '✅ All Test Cases Passed!' : '❌ Test Cases Failed'}</span>
-                            <span>{codeExecutionResults.results?.filter(r => r.passed).length}/{codeExecutionResults.results?.length} Passed</span>
-                          </div>
-
-                          <div className="space-y-1.5 pt-1">
-                            {codeExecutionResults.results?.map((t, idx) => (
-                              <div key={idx} className="p-2 bg-[#111114] rounded border border-[#222229] text-[11px]">
-                                <div>Case {t.case || t.test_case || (idx + 1)}: <span className={t.passed ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{t.passed ? 'PASSED' : 'FAILED'}</span></div>
-                                <div className="text-[#A1A1AA]">Input: {t.input} | Expected: {t.expected}</div>
-                                {!t.passed && <div className="text-rose-400">Got: {t.actual || t.error}</div>}
+                        {/* Active Test Case Input & Expected Output Box */}
+                        {question.test_cases[activeTestCaseTab] && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-mono uppercase text-[#71717A] tracking-wider">Input</span>
+                              <div className="bg-[#111114] border border-[#222229] p-2.5 rounded-lg font-mono text-xs text-emerald-400 overflow-x-auto">
+                                {question.test_cases[activeTestCaseTab].input}
                               </div>
-                            ))}
+                            </div>
+
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-mono uppercase text-[#71717A] tracking-wider">Expected Output</span>
+                              <div className="bg-[#111114] border border-[#222229] p-2.5 rounded-lg font-mono text-xs text-cyan-300 overflow-x-auto">
+                                {question.test_cases[activeTestCaseTab].expected_output}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                    )
                   )}
 
                   {/* MCQ Choices if options exist */}
@@ -1075,17 +1155,28 @@ export function LearningWorkspaceView() {
               ) : (
                 <div className="flex items-center justify-between gap-3 pt-2 border-t border-[#222229]">
                   {!attemptResult ? (
-                    <Button
-                      onClick={handleSubmitQuestion}
-                      isLoading={isSubmitting}
-                      disabled={!userAnswer || isLoadingQuestion || isSubmitting}
-                      size="md"
-                      className="w-full font-bold shadow-sm cursor-pointer"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-white mr-1.5" />
-                      Submit Answer (Question {Math.min(currentQuestionCount, targetQuestionCount)}/{targetQuestionCount})
-                    </Button>
-                  ) : attemptResult.passed ? (
+                    <div className="w-full space-y-2">
+                      <Button
+                        onClick={handleSubmitQuestion}
+                        isLoading={isSubmitting}
+                        disabled={!userAnswer || isLoadingQuestion || isSubmitting || (isCodeQuestion && !testsCleared)}
+                        size="md"
+                        className="w-full font-bold shadow-sm cursor-pointer"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-white mr-1.5" />
+                        {isCodeQuestion && !testsCleared
+                          ? 'Run all test cases first'
+                          : `Submit Answer (Question ${Math.min(currentQuestionCount, targetQuestionCount)}/${targetQuestionCount})`}
+                      </Button>
+                      {isCodeQuestion && !testsCleared && (
+                        <p className="text-[11px] text-amber-400 text-center font-mono">
+                          {hasTestCases
+                            ? 'All test cases must pass before you can submit.'
+                            : 'Waiting for test cases to be generated…'}
+                        </p>
+                      )}
+                    </div>
+                  ) : canAdvance ? (
                     <Button
                       onClick={fetchNextQuestion}
                       isLoading={isFetchingNext}
@@ -1096,15 +1187,22 @@ export function LearningWorkspaceView() {
                       <ArrowRight className="w-4 h-4 ml-1" />
                     </Button>
                   ) : (
-                    <Button
-                      onClick={handleRetryQuestion}
-                      size="md"
-                      variant="secondary"
-                      className="w-full font-bold shadow-sm flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <RotateCcw className="w-4 h-4 mr-1" />
-                      Retry Question {currentQuestionCount}/{targetQuestionCount}
-                    </Button>
+                    <div className="w-full space-y-2">
+                      <Button
+                        onClick={handleRetryQuestion}
+                        size="md"
+                        variant="secondary"
+                        className="w-full font-bold shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <RotateCcw className="w-4 h-4 mr-1" />
+                        Retry Question {currentQuestionCount}/{targetQuestionCount}
+                      </Button>
+                      {isCodeQuestion && attemptResult.passed && !testsCleared && (
+                        <p className="text-[11px] text-amber-400 text-center font-mono">
+                          Fix the failing test cases before moving on.
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

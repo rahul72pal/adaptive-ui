@@ -11,7 +11,7 @@ try {
 
 // Read URL hash on initial load
 const hashTab = typeof window !== 'undefined' && window.location.hash ? window.location.hash.replace('#/', '').replace('#', '') : null;
-const validTabs = ['onboarding', 'diagnostic', 'path', 'workspace', 'analytics'];
+const validTabs = ['onboarding', 'diagnostic', 'path', 'workspace', 'analytics', 'settings'];
 const initialActiveTab = validTabs.includes(hashTab) ? hashTab : 'onboarding';
 
 const initialState = {

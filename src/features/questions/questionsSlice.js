@@ -9,6 +9,7 @@ const initialState = {
   currentQuestionCount: 1,
   targetQuestionCount: 5,
   difficulty: 3,
+  questionStage: 'idle',
 };
 
 const questionsSlice = createSlice({
@@ -42,6 +43,25 @@ const questionsSlice = createSlice({
         state.nodeCompleted = false;
       }
     },
+    startStreamingQuestion: (state, action) => {
+      const { question, nextQuestionCount, resetSession = false } = action.payload || {};
+      state.currentQuestion = question || null;
+      state.attemptResult = null;
+      state.isSubmitting = false;
+      state.userAnswer = '';
+      if (nextQuestionCount) {
+        state.currentQuestionCount = nextQuestionCount;
+      } else if (resetSession) {
+        state.currentQuestionCount = 1;
+      }
+      state.nodeCompleted = false;
+    },
+    patchCurrentQuestion: (state, action) => {
+      state.currentQuestion = { ...(state.currentQuestion || {}), ...(action.payload || {}) };
+    },
+    setQuestionStage: (state, action) => {
+      state.questionStage = action.payload;
+    },
     setNextQuestion: (state, action) => {
       state.currentQuestion = action.payload;
       state.userAnswer = action.payload?.initial_code || '';
@@ -71,6 +91,7 @@ const questionsSlice = createSlice({
       state.currentQuestionCount = 1;
       state.targetQuestionCount = 5;
       state.difficulty = 3;
+      state.questionStage = 'idle';
     },
     resetQuestionState: () => {
       return initialState;
@@ -80,6 +101,9 @@ const questionsSlice = createSlice({
 
 export const {
   setCurrentQuestion,
+  startStreamingQuestion,
+  patchCurrentQuestion,
+  setQuestionStage,
   setUserAnswer,
   setAttemptResult,
   setNextQuestion,

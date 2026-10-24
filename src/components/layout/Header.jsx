@@ -26,7 +26,8 @@ import {
   CheckCircle2,
   Code2,
   Globe,
-  ChevronDown
+  ChevronDown,
+  Settings
 } from 'lucide-react';
 
 export function Header() {
@@ -67,6 +68,8 @@ export function Header() {
     { id: 'workspace', label: 'Workspace', shortLabel: 'Workspace', icon: BookOpen },
     { id: 'analytics', label: 'Knowledge Profile', shortLabel: 'Profile', icon: BarChart3 },
   ];
+
+  const settingsNavItem = { id: 'settings', label: 'LLM Settings', shortLabel: 'Settings', icon: Settings };
 
   const currentTopicObj = topics.find((t) => t.id === activeTopic) || {
     id: activeTopic || 'getting-started',
@@ -279,6 +282,21 @@ export function Header() {
             </span>
           </button>
 
+          {/* Settings Button */}
+          {isAuthenticated && (
+            <button
+              onClick={() => dispatch(setActiveTab('settings'))}
+              title="LLM Configuration"
+              className={`hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer ${
+                activeTab === 'settings'
+                  ? 'bg-[#211C38] text-[#8B7CFF] border-[#49406F]'
+                  : 'bg-[#16161B] text-[#71717A] border-[#292932] hover:text-[#F4F4F5] hover:border-[#49406F]'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          )}
+
           {/* User Account / Auth Button */}
           {isAuthenticated && user ? (
             <div className="flex items-center gap-1.5 bg-[#16161B] p-0.5 rounded-xl border border-[#292932]">
@@ -350,6 +368,19 @@ export function Header() {
                   </button>
                 );
               })}
+              {isAuthenticated && (
+                <button
+                  onClick={() => handleNavClick(settingsNavItem.id)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all cursor-pointer ${
+                    activeTab === settingsNavItem.id
+                      ? 'bg-[#211C38] text-[#8B7CFF] border border-[#49406F]'
+                      : 'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#16161B] border border-transparent'
+                  }`}
+                >
+                  <Settings className={`w-4 h-4 shrink-0 ${activeTab === settingsNavItem.id ? 'text-[#8B7CFF]' : 'text-[#71717A]'}`} />
+                  <span>{settingsNavItem.label}</span>
+                </button>
+              )}
             </div>
           </div>
 

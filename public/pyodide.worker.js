@@ -32,6 +32,38 @@ self.onmessage = async (event) => {
     const testRunnerScript = `
 import json
 import sys
+import typing
+from typing import *
+import collections
+from collections import *
+import math, heapq, bisect, random
+
+class ListNode:
+    def __init__(self, val=0, next=None):
+        self.val = val
+        self.next = next
+    def __repr__(self):
+        return f"ListNode({self.val})"
+
+class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val = val
+        self.left = left
+        self.right = right
+    def __repr__(self):
+        return f"TreeNode({self.val})"
+
+# Pre-populate globals
+globals()["ListNode"] = ListNode
+globals()["TreeNode"] = TreeNode
+globals()["math"] = math
+globals()["heapq"] = heapq
+globals()["bisect"] = bisect
+globals()["random"] = random
+for mod in (typing, collections):
+    for k in dir(mod):
+        if not k.startswith("_"):
+            globals()[k] = getattr(mod, k)
 
 # 1. Execute user code in global space
 exec(__user_code__, globals())
@@ -41,6 +73,19 @@ results = []
 fn_name = __target_fn_name__
 
 fn = globals().get(fn_name)
+if not fn:
+    sol_cls = globals().get("Solution")
+    if isinstance(sol_cls, type):
+        try:
+            sol_inst = sol_cls()
+            if hasattr(sol_inst, fn_name):
+                fn = getattr(sol_inst, fn_name)
+            else:
+                methods = [getattr(sol_inst, m) for m in dir(sol_inst) if callable(getattr(sol_inst, m)) and not m.startswith("_")]
+                fn = methods[-1] if methods else None
+        except Exception:
+            pass
+
 if not fn:
     # Fallback search for any user-defined function if name differs
     all_funcs = [v for k, v in globals().items() if callable(v) and not k.startswith("__") and k != "json"]
@@ -103,6 +148,8 @@ json.dumps(results)
       type: "EXECUTION_COMPLETE",
       success: true,
       allPassed: allPassed,
+      total: parsedResults.length,
+      passed: parsedResults.filter((t) => t.passed).length,
       results: parsedResults
     });
 
@@ -111,6 +158,9 @@ json.dumps(results)
       type: "EXECUTION_ERROR",
       success: false,
       allPassed: false,
+      total: testCases?.length || 0,
+      passed: 0,
+      results: [],
       error: error.message
     });
   }

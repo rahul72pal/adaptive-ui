@@ -10,6 +10,7 @@ import { DiagnosticChatView } from './features/diagnostic/DiagnosticChatView';
 import { LearningPathView } from './features/learning/LearningPathView';
 import { LearningWorkspaceView } from './features/learning/LearningWorkspaceView';
 import { KnowledgeProfileView } from './features/analytics/KnowledgeProfileView';
+import { UserLLMConfigPage } from './features/settings/UserLLMConfigPage';
 
 export function parseRoute(hashString) {
   const raw = hashString ? hashString.replace(/^#\/?/, '') : '';
@@ -45,6 +46,9 @@ export function parseRoute(hashString) {
   }
   if (parts[0] === 'analytics') {
     return { activeTab: 'analytics', activeTopic: null, sessionId: null };
+  }
+  if (parts[0] === 'settings') {
+    return { activeTab: 'settings', activeTopic: null, sessionId: null };
   }
 
   return { activeTab: 'onboarding', activeTopic: null, sessionId: null };
@@ -153,6 +157,7 @@ export function App() {
           {activeTab === 'path' && <LearningPathView />}
           {activeTab === 'workspace' && <LearningWorkspaceView />}
           {activeTab === 'analytics' && <KnowledgeProfileView />}
+          {activeTab === 'settings' && <UserLLMConfigPage />}
         </ErrorBoundary>
       </main>
 
