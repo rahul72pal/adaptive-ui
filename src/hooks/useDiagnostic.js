@@ -1,11 +1,17 @@
+import { useState, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import { diagnosticApi } from '../api/diagnosticApi';
+import { streamFetch } from '../api/streamClient';
 import {
   startSession,
   addMessage,
+  startStreamingAssistantMessage,
+  setStreamingStatus,
+  appendStreamToken,
+  updateLiveEvaluation,
+  finishStreamingAssistantMessage,
   recordTurnHistory,
-  updateTurn,
   completeDiagnostic,
   loadExistingSession
 } from '../features/diagnostic/diagnosticSlice';
@@ -14,15 +20,47 @@ import { setActiveTab, setTopicModeChoice } from '../features/user/userSlice';
 export function useDiagnostic() {
   const dispatch = useDispatch();
   const { activeTopic } = useSelector((state) => state.user);
-  const { sessionId, turn, messages, status, totalTurns } = useSelector((state) => state.diagnostic);
+  const {
+    sessionId,
+    turn,
+    messages,
+    status,
+    totalTurns,
+    knowledgeProfile,
+    currentConcept,
+    lastFeedback,
+    lastEvaluatedConcept,
+    isStreaming,
+    streamingStatus
+  } = useSelector((state) => state.diagnostic);
+
+  const [isLocalStreaming, setIsLocalStreaming] = useState(false);
 
   const startMutation = useMutation({
-    mutationFn: (topicOverride) => {
-      const topicToStart = (typeof topicOverride === 'string' && topicOverride.trim()) ? topicOverride.trim() : activeTopic;
-      return diagnosticApi.startDiagnostic({ topic: topicToStart });
+    mutationFn: (param) => {
+      let topicToStart = activeTopic;
+      let targetSessionId = null;
+      if (typeof param === 'string' && param.trim()) {
+        topicToStart = param.trim();
+      } else if (param && typeof param === 'object') {
+        if (param.topic) topicToStart = param.topic.trim();
+        if (param.sessionId) targetSessionId = param.sessionId;
+      }
+      if (!targetSessionId && topicToStart) {
+        targetSessionId = localStorage.getItem(`adaptive_diag_session_${topicToStart}`);
+      }
+      return diagnosticApi.startDiagnostic({ topic: topicToStart, session_id: targetSessionId });
     },
-    onSuccess: (data, topicOverride) => {
-      const topicSlug = (typeof topicOverride === 'string' && topicOverride.trim()) ? topicOverride.trim() : activeTopic;
+    onSuccess: (data, param) => {
+      let topicSlug = activeTopic;
+      if (typeof param === 'string' && param.trim()) {
+        topicSlug = param.trim();
+      } else if (param && typeof param === 'object' && param.topic) {
+        topicSlug = param.topic.trim();
+      }
+      if (data.session_id && topicSlug) {
+        localStorage.setItem(`adaptive_diag_session_${topicSlug}`, data.session_id);
+      }
       if (data.messages && data.messages.length > 0) {
         dispatch(loadExistingSession({
           sessionId: data.session_id,
@@ -32,7 +70,8 @@ export function useDiagnostic() {
           knowledge_profile: data.knowledge_profile,
           messages: data.messages,
           turn_history: data.turn_history,
-          current_question: data.question || data.current_question
+          current_question: data.question || data.current_question,
+          current_concept: data.current_concept
         }));
       } else {
         dispatch(startSession({
@@ -41,6 +80,8 @@ export function useDiagnostic() {
           options: data.options || [],
           user_input: data.user_input || null,
           turn: data.current_turn || data.turns_used || 1,
+          knowledgeProfile: data.knowledge_profile || null,
+          currentConcept: data.current_concept || null,
         }));
       }
 
@@ -57,6 +98,11 @@ export function useDiagnostic() {
       return diagnosticApi.getDiagnosticState(idToFetch);
     },
     onSuccess: (data) => {
+      if (data.session_id && data.topic) {
+        localStorage.setItem(`adaptive_diag_session_${data.topic}`, data.session_id);
+      } else if (data.session_id && activeTopic) {
+        localStorage.setItem(`adaptive_diag_session_${activeTopic}`, data.session_id);
+      }
       dispatch(loadExistingSession({
         sessionId: data.session_id,
         turn: data.turns_used || 1,
@@ -65,65 +111,150 @@ export function useDiagnostic() {
         knowledge_profile: data.knowledge_profile,
         messages: data.messages || [],
         turn_history: data.turn_history || [],
-        current_question: data.current_question
+        current_question: data.current_question,
+        current_concept: data.current_concept,
       }));
     }
   });
 
-  const answerMutation = useMutation({
-    mutationFn: (userAnswer) => {
-      const lastAiMessage = [...messages].reverse().find((m) => m.sender === 'ai');
-      const currentQuestionText = lastAiMessage ? lastAiMessage.text : 'Diagnostic Question';
-      const inputId = lastAiMessage?.userInput?.input_id || lastAiMessage?.input_id || null;
+  // Streaming Answer Submission handler
+  const sendAnswerStream = useCallback(async (userAnswer) => {
+    if (!userAnswer || !sessionId || isStreaming || isLocalStreaming) return;
 
-      dispatch(addMessage({
-        id: `user_${Date.now()}`,
-        sender: 'user',
-        text: userAnswer,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      }));
+    const lastAiMessage = [...messages].reverse().find((m) => m.sender === 'ai');
+    const currentQuestionText = lastAiMessage ? lastAiMessage.text : 'Diagnostic Question';
+    const inputId = lastAiMessage?.userInput?.input_id || lastAiMessage?.input_id || null;
 
-      return diagnosticApi.answerDiagnostic({ session_id: sessionId, answer: userAnswer, turn, input_id: inputId }).then((res) => {
-        return { ...res, currentQuestionText, userAnswer };
-      });
-    },
-    onSuccess: (data) => {
-      let feedback = data.feedback;
-      if (!feedback && data.knowledge_profile && typeof data.knowledge_profile === 'object') {
-        const evalConcept = data.last_evaluated_concept;
-        if (evalConcept && data.knowledge_profile[evalConcept]?.feedback) {
-          feedback = data.knowledge_profile[evalConcept].feedback;
-        } else {
-          const assessed = Object.values(data.knowledge_profile).filter(e => e && e.status !== 'unassessed' && e.feedback);
-          if (assessed.length > 0) {
-            feedback = assessed[assessed.length - 1].feedback;
+    // 1. Add user message
+    dispatch(addMessage({
+      id: `user_${Date.now()}`,
+      sender: 'user',
+      text: userAnswer,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }));
+
+    // 2. Start streaming assistant message placeholder
+    setIsLocalStreaming(true);
+    dispatch(startStreamingAssistantMessage({
+      id: `ai_stream_${Date.now()}`,
+      status: 'evaluating'
+    }));
+
+    let receivedInput = null;
+    let accumulatedTokens = [];
+    let evaluatedPayload = null;
+
+    try {
+      await streamFetch(
+        '/diagnostic/answer/stream',
+        { session_id: sessionId, answer: userAnswer, input_id: inputId },
+        (data) => {
+          if (!data) return;
+
+          // Tool indicators
+          if (data.event === 'tool_start') {
+            if (data.tool_name === 'score_node') {
+              dispatch(setStreamingStatus('evaluating'));
+            } else if (data.tool_name === 'ask_node') {
+              dispatch(setStreamingStatus('generating'));
+            }
           }
+
+          // Real-time evaluation event: Update Knowledge Profile & AI Feedback instantly!
+          if (data.event === 'evaluated') {
+            evaluatedPayload = data;
+            dispatch(updateLiveEvaluation({
+              knowledgeProfile: data.knowledge_profile,
+              feedback: data.feedback,
+              currentConcept: data.current_concept,
+              lastEvaluatedConcept: data.current_concept || data.concept,
+              turn: data.turn,
+            }));
+
+            dispatch(recordTurnHistory({
+              turn: data.turn,
+              question: currentQuestionText,
+              userAnswer,
+              feedback: data.feedback || 'Assessment recorded by Lumina AI engine.',
+              concept: data.current_concept,
+            }));
+          }
+
+          // Token streaming for the next question (typewriter effect)
+          if (data.event === 'text_delta' || data.event === 'question_token') {
+            if (data.delta) {
+              accumulatedTokens.push(data.delta);
+              dispatch(appendStreamToken(data.delta));
+            }
+          }
+
+          // Structured interactive input prompt
+          if (data.event === 'user_input') {
+            receivedInput = data.input;
+          }
+
+          // Stream completion
+          if (data.event === 'message_end' || data.event === 'question_complete' || data.event === 'complete') {
+            const isComplete = Boolean(
+              data.is_complete ||
+              data.payload?.is_complete ||
+              evaluatedPayload?.is_complete ||
+              (data.turn && data.turn >= 15) ||
+              (data.payload?.turn && data.payload?.turn >= 15)
+            );
+
+            const finalProfile = data.payload?.knowledge_profile || data.knowledge_profile || evaluatedPayload?.knowledge_profile;
+            const finalFeedback = evaluatedPayload?.feedback || data.payload?.feedback || data.feedback;
+            const finalConcept = data.payload?.current_concept || data.current_concept || evaluatedPayload?.current_concept;
+            const finalTurn = data.payload?.turn || data.turn || evaluatedPayload?.turn || (turn + 1);
+
+            dispatch(updateLiveEvaluation({
+              knowledgeProfile: finalProfile,
+              feedback: finalFeedback,
+              currentConcept: finalConcept,
+              lastEvaluatedConcept: evaluatedPayload?.current_concept || data.last_evaluated_concept,
+              turn: finalTurn,
+            }));
+
+            const finalQuestion = data.payload?.current_question || data.current_question || data.markdown || accumulatedTokens.join('') || undefined;
+            const opts = data.options || (receivedInput?.options ? receivedInput.options.map(o => typeof o === 'object' ? (o.label || o.text || o.value) : o) : []);
+
+            dispatch(finishStreamingAssistantMessage({
+              text: finalQuestion,
+              options: opts,
+              userInput: receivedInput || data.payload?.user_input || null,
+            }));
+
+            if (isComplete) {
+              dispatch(completeDiagnostic(finalProfile));
+            }
+          }
+
+          if (data.event === 'error') {
+            console.error('[Diagnostic Stream Error]:', data.message);
+            dispatch(finishStreamingAssistantMessage({
+              text: `⚠️ **Diagnostic Evaluation Note:** ${data.message || 'Stream connection interrupted. Please try again.'}`
+            }));
+          }
+        },
+        (streamErr) => {
+          console.error('[Diagnostic Stream Fetch Error]:', streamErr);
+          dispatch(finishStreamingAssistantMessage({
+            text: '⚠️ An error occurred while streaming the AI response. Please check your network and try again.'
+          }));
         }
-      }
-      if (!feedback) {
-        feedback = 'Response evaluated and confidence updated.';
-      }
-
-      dispatch(recordTurnHistory({
-        turn: data.turns_used || data.current_turn || turn,
-        question: data.currentQuestionText,
-        userAnswer: data.userAnswer,
-        feedback,
+      );
+    } catch (err) {
+      console.error('[sendAnswerStream catch]:', err);
+      dispatch(finishStreamingAssistantMessage({
+        text: '⚠️ Unable to complete AI diagnostic stream.'
       }));
+    } finally {
+      setIsLocalStreaming(false);
+    }
+  }, [sessionId, isStreaming, isLocalStreaming, messages, turn, dispatch]);
 
-      if (data.is_complete || data.status === 'completed' || (data.turns_used && data.turns_used >= 15)) {
-        dispatch(completeDiagnostic(data.knowledge_profile));
-      } else {
-        dispatch(updateTurn({
-          turn: data.turns_used || data.current_turn || (turn + 1),
-          nextQuestion: data.current_question || data.question || data.next_question,
-          options: data.options || [],
-          user_input: data.user_input || null,
-          knowledgeProfile: data.knowledge_profile,
-        }));
-      }
-    },
-  });
+  const isAnswering = isStreaming || isLocalStreaming;
 
   return {
     startDiagnostic: startMutation.mutate,
@@ -132,13 +263,19 @@ export function useDiagnostic() {
     loadSession: loadSessionMutation.mutate,
     loadSessionAsync: loadSessionMutation.mutateAsync,
     isLoadingSession: loadSessionMutation.isPending,
-    sendAnswer: answerMutation.mutate,
-    isAnswering: answerMutation.isPending,
+    sendAnswer: sendAnswerStream,
+    isAnswering,
     messages,
     turn,
     totalTurns: totalTurns || 15,
     status,
-    sessionId
+    sessionId,
+    knowledgeProfile,
+    currentConcept,
+    lastFeedback,
+    lastEvaluatedConcept,
+    streamingStatus,
   };
 }
+
 

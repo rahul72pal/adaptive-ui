@@ -18,7 +18,9 @@ export function TopicChoiceModal({ isOpen, onClose, topicData }) {
   if (!isOpen || !topicData) return null;
 
   const canonicalTopic = topicData.canonical_topic || topicData.raw_input_topic || topicData.topic_slug || 'Topic';
-  const topicSlug = topicData.topic_slug || canonicalTopic.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const topicId = topicData.topic_id || topicData.topic_slug || canonicalTopic;
+  const categoryId = topicData.category_id || null;
+  const topicSlug = topicData.topic_slug || topicData.topic_id || canonicalTopic.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const rawInput = topicData.raw_input_topic;
   const isAliasMatch = rawInput && canonicalTopic.toLowerCase() !== rawInput.toLowerCase();
 
@@ -37,12 +39,16 @@ export function TopicChoiceModal({ isOpen, onClose, topicData }) {
     dispatch(setActiveTopic(topicSlug));
     dispatch(setTopicModeChoice({ topicId: topicSlug, modeChoice: 'diagnostic' }));
     try {
-      await setTopicModeApi({ topic: canonicalTopic, mode_choice: 'diagnostic' });
+      await setTopicModeApi({
+        topic: topicId,
+        mode_choice: 'diagnostic',
+        category_id: categoryId,
+      });
     } catch (err) {
       console.warn('Failed to save topic mode choice to server:', err);
     }
     try {
-      await startDiagnosticAsync(canonicalTopic);
+      await startDiagnosticAsync(topicId);
       onClose();
     } catch (err) {
       console.error('Failed to start diagnostic chat:', err);
@@ -53,13 +59,17 @@ export function TopicChoiceModal({ isOpen, onClose, topicData }) {
     dispatch(setActiveTopic(topicSlug));
     dispatch(setTopicModeChoice({ topicId: topicSlug, modeChoice: 'beginner' }));
     try {
-      await setTopicModeApi({ topic: canonicalTopic, mode_choice: 'beginner' });
+      await setTopicModeApi({
+        topic: topicId,
+        mode_choice: 'beginner',
+        category_id: categoryId,
+      });
     } catch (err) {
       console.warn('Failed to save topic mode choice to server:', err);
     }
     dispatch(setTargetLevel('beginner'));
     dispatch(skipDiagnostic());
-    generatePath(canonicalTopic);
+    generatePath(topicId);
   };
 
   return (
@@ -84,6 +94,11 @@ export function TopicChoiceModal({ isOpen, onClose, topicData }) {
           <h2 className="text-2xl font-extrabold text-[#F4F4F5] tracking-tight">
             Configure & Start <span className="gradient-text capitalize">{canonicalTopic}</span>
           </h2>
+          {(topicData.category_name || topicData.category) && (
+            <div className="inline-block text-xs text-[#8B7CFF] bg-[#211C38] px-2.5 py-0.5 rounded-full border border-[#49406F]">
+              Category: {topicData.category_name || topicData.category}
+            </div>
+          )}
 
           {isAliasMatch && (
             <div className="flex items-center justify-center gap-2 text-xs text-[#8B7CFF] bg-[#211C38] px-3 py-1.5 rounded-xl border border-[#49406F]">

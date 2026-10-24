@@ -6,6 +6,7 @@ import { useUserTopics } from '../../hooks/useUserTopics';
 import { useLearningPath } from '../../hooks/useLearningPath';
 import { useDiagnostic } from '../../hooks/useDiagnostic';
 import { TopicChoiceModal } from './TopicChoiceModal';
+import { DsaTopicSearchPicker } from './DsaTopicSearchPicker';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -42,7 +43,6 @@ export function OnboardingView() {
   } = useUserTopics();
   const { generatePath, isGenerating } = useLearningPath();
 
-  const [customTopicInput, setCustomTopicInput] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalTopicData, setModalTopicData] = useState(null);
 
@@ -73,7 +73,7 @@ export function OnboardingView() {
 
     if (topic.mode_choice === 'diagnostic') {
       try {
-        await startDiagnosticAsync(topic.canonical_topic || topic.name || topic.id);
+        await startDiagnosticAsync(topic.topic_id || topic.canonical_topic || topic.name || topic.id);
       } catch (err) {
         console.error('Failed to start diagnostic chat session:', err);
       }
@@ -81,16 +81,25 @@ export function OnboardingView() {
     }
 
     try {
-      const topicData = await selectOrCreateTopic(topic.canonical_topic || topic.name || topic.id);
+      const topicArg = topic.topic_id
+        ? { topic_id: topic.topic_id, category_id: topic.category_id, name: topic.canonical_topic || topic.name }
+        : (topic.canonical_topic || topic.name || topic.id);
+      const topicData = await selectOrCreateTopic(topicArg);
       if (topicData?.mode_choice === 'diagnostic') {
-        await startDiagnosticAsync(topicData.canonical_topic);
+        await startDiagnosticAsync(topicData.topic_id || topicData.canonical_topic);
         return;
       } else if (topicData?.mode_choice === 'beginner' || topicData?.is_completed) {
         dispatch(setActiveTab('path'));
         return;
       }
 
-      setModalTopicData(topicData || { canonical_topic: topic.name, topic_slug: topic.id });
+      setModalTopicData(topicData || {
+        canonical_topic: topic.name || topic.canonical_topic,
+        topic_slug: topic.topic_id || topic.id,
+        topic_id: topic.topic_id,
+        category_id: topic.category_id,
+        category_name: topic.category_name,
+      });
       setIsModalOpen(true);
     } catch (e) {
       console.error('Topic selection failed:', e);
@@ -102,10 +111,11 @@ export function OnboardingView() {
     await deleteTopic(topicId);
   };
 
-  const handleAddCustomTopic = async (e) => {
-    e.preventDefault();
-    if (!customTopicInput.trim()) return;
-    const inputName = customTopicInput.trim();
+  const handleSelectTopicName = async (topicArg) => {
+    if (!topicArg) return;
+    const isObj = typeof topicArg === 'object' && topicArg !== null;
+    const cleanName = isObj ? (topicArg.name || topicArg.topic || topicArg.topic_id) : topicArg.trim();
+    if (!cleanName) return;
 
     if (!isAuthenticated) {
       dispatch(openAuthModal());
@@ -113,12 +123,11 @@ export function OnboardingView() {
     }
 
     try {
-      const topicData = await selectOrCreateTopic(inputName);
-      setCustomTopicInput('');
+      const topicData = await selectOrCreateTopic(topicArg);
 
       if (topicData?.mode_choice === 'diagnostic') {
         dispatch(setActiveTopic(topicData.topic_slug));
-        await startDiagnosticAsync(topicData.canonical_topic);
+        await startDiagnosticAsync(topicData.topic_id || topicData.canonical_topic);
         return;
       } else if (topicData?.mode_choice === 'beginner' || topicData?.is_completed) {
         dispatch(setActiveTopic(topicData.topic_slug));
@@ -126,7 +135,14 @@ export function OnboardingView() {
         return;
       }
 
-      setModalTopicData(topicData || { canonical_topic: inputName, raw_input_topic: inputName, topic_slug: inputName.toLowerCase() });
+      setModalTopicData(topicData || {
+        canonical_topic: cleanName,
+        raw_input_topic: cleanName,
+        topic_slug: topicArg?.topic_id || cleanName.toLowerCase(),
+        topic_id: topicArg?.topic_id,
+        category_id: topicArg?.category_id,
+        category_name: topicArg?.category || topicArg?.category_name,
+      });
       setIsModalOpen(true);
     } catch (err) {
       console.error('Failed to create/select topic:', err);
@@ -144,7 +160,7 @@ export function OnboardingView() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto w-full py-6 sm:py-8 px-4 sm:px-6 space-y-6 sm:space-y-8 animate-fadeIn text-[#F4F4F5]">
+    <div className="max-w-[1440px] mx-auto w-full py-6 sm:py-8 px-4 sm:px-6 space-y-6 sm:space-y-8 animate-fadeIn text-[#F4F4F5]">
       
       {/* ========================================================= */}
       {/* 1. HERO PAGE HEADING                                      */}
@@ -155,10 +171,10 @@ export function OnboardingView() {
           Adaptive Curriculum Engine
         </Badge>
         <h2 className="text-3xl sm:text-4xl lg:text-[42px] font-extrabold tracking-tight text-[#F4F4F5] leading-[1.15]">
-          Select or Create Your <span className="gradient-text">Learning Topic</span>
+          Explore & Master <span className="gradient-text">DSA Topics</span>
         </h2>
         <p className="text-sm sm:text-base text-[#A1A1AA] leading-relaxed max-w-xl mx-auto">
-          Type any custom topic below to generate a tailored curriculum or select one of your saved topics.
+          Search dynamically from 60 curated DSA modules or continue your saved learning topics.
         </p>
       </div>
 
@@ -234,42 +250,12 @@ export function OnboardingView() {
       </Card>
 
       {/* ========================================================= */}
-      {/* 3. CUSTOM TOPIC INPUT CARD                                */}
+      {/* 3. DYNAMIC DSA TOPIC SEARCH & LISTING PICKER             */}
       {/* ========================================================= */}
-      <Card className="bg-[#111114] border border-[#292932] shadow-subtle p-5 sm:p-6 space-y-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <PlusCircle className="w-4 h-4 text-[#8B7CFF]" />
-            <h3 className="font-extrabold text-sm sm:text-base text-[#F4F4F5]">Search or Input Any Custom Topic</h3>
-          </div>
-          <p className="text-xs text-[#A1A1AA]">
-            Type any topic name (e.g. <em>Arrays, Dynamic Programming, System Design, FastAPI, Docker</em>) to start your assessment.
-          </p>
-        </div>
-
-        <form onSubmit={handleAddCustomTopic} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
-          <div className="relative flex-1 w-full">
-            <Search className="w-4 h-4 text-[#71717A] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={customTopicInput}
-              onChange={(e) => setCustomTopicInput(e.target.value)}
-              placeholder="Enter custom topic name (e.g. Arrays, Trees, Machine Learning)..."
-              className="w-full h-11 pl-10 pr-4 bg-[#16161B] border border-[#292932] rounded-xl text-sm focus:outline-none focus:border-[#8B7CFF] focus:ring-1 focus:ring-[#8B7CFF]/30 text-[#F4F4F5] placeholder:text-[#71717A] transition-all shadow-2xs"
-            />
-          </div>
-          <Button
-            type="submit"
-            isLoading={isTopicsLoading}
-            disabled={!customTopicInput.trim()}
-            size="md"
-            className="h-11 px-6 font-semibold shrink-0 shadow-sm text-xs sm:text-sm cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4 mr-1.5" />
-            Select & Configure Topic
-          </Button>
-        </form>
-      </Card>
+      <DsaTopicSearchPicker
+        onSelectTopic={handleSelectTopicName}
+        isLoading={isTopicsLoading}
+      />
 
       {/* ========================================================= */}
       {/* 4. YOUR LEARNING TOPICS SECTION                           */}

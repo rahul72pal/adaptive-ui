@@ -81,6 +81,24 @@ export function App() {
     loadSessionRef.current = loadSession;
   }, [loadSession]);
 
+  // Parse route on initial mount (page load / refresh)
+  const initialMountRef = useRef(false);
+  useEffect(() => {
+    if (!initialMountRef.current) {
+      initialMountRef.current = true;
+      const parsed = parseRoute(window.location.hash);
+      if (parsed.activeTopic && parsed.activeTopic !== activeTopic) {
+        dispatch(setActiveTopic(parsed.activeTopic));
+      }
+      if (parsed.activeTab && parsed.activeTab !== activeTab) {
+        dispatch(setActiveTab(parsed.activeTab));
+      }
+      if (parsed.activeTab === 'diagnostic' && parsed.sessionId) {
+        loadSessionRef.current?.(parsed.sessionId);
+      }
+    }
+  }, [dispatch, activeTopic, activeTab]);
+
   // Handle browser back/forward or manual hash change in URL
   useEffect(() => {
     const handleHashChange = () => {
@@ -100,8 +118,13 @@ export function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [dispatch, activeTopic, activeTab, sessionId]);
 
-  // Sync Redux state updates into browser URL hash
+  // Sync Redux state updates into browser URL hash without stripping initial sessionId
   useEffect(() => {
+    const parsed = parseRoute(window.location.hash);
+    // Guard against overwriting URL hash if URL already has a sessionId being loaded
+    if (!sessionId && parsed.sessionId && parsed.activeTab === 'diagnostic') {
+      return;
+    }
     const targetHash = buildRouteHash(activeTab, activeTopic, sessionId);
     if (window.location.hash !== targetHash) {
       window.history.replaceState(null, '', targetHash);
@@ -122,8 +145,8 @@ export function App() {
       {/* Global Animated Header with Topic Tabs & Navigation */}
       <Header />
 
-      {/* Main Full-Width Content Screen View Protected by ErrorBoundary */}
-      <main className="flex-1 px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+      {/* Main Content View with Max-Width 1440px Protected by ErrorBoundary */}
+      <main className="flex-1 w-full max-w-[1440px] mx-auto px-3 sm:px-6 py-2 sm:py-3 flex flex-col min-h-0">
         <ErrorBoundary>
           {activeTab === 'onboarding' && <OnboardingView />}
           {activeTab === 'diagnostic' && <DiagnosticChatView />}

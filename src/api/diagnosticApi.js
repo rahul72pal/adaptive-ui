@@ -1,9 +1,13 @@
 import { apiClient } from './client';
 
 export const diagnosticApi = {
-  startDiagnostic: async ({ topic }) => {
+  startDiagnostic: async ({ topic, session_id = null }) => {
     try {
-      const data = await apiClient.post('/diagnostic/start', { topic }, { timeout: 180000 });
+      const payload = { topic };
+      if (session_id) {
+        payload.session_id = session_id;
+      }
+      const data = await apiClient.post('/diagnostic/start', payload, { timeout: 180000 });
       return {
         session_id: data.session_id,
         status: data.is_complete ? 'completed' : 'active',

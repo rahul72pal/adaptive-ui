@@ -49,7 +49,7 @@ export function LearningPathView() {
   const nextLevelTitle = currentLevelName === 'beginner' ? 'Intermediate' : currentLevelName === 'intermediate' ? 'Advanced' : 'Expert';
 
   return (
-    <div className="max-w-6xl mx-auto py-6 px-4 space-y-8 animate-fadeIn text-[#F4F4F5]">
+    <div className="max-w-[1440px] w-full mx-auto py-4 px-2 space-y-6 animate-fadeIn text-[#F4F4F5]">
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-[#111114] p-6 rounded-2xl border border-[#292932] shadow-subtle">
         <div className="space-y-1">

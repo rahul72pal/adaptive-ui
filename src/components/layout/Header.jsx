@@ -128,8 +128,8 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-[#111114]/95 backdrop-blur-md border-b border-[#222229] px-3 sm:px-6 lg:px-8 py-2.5 transition-all shadow-subtle text-[#F4F4F5]">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 lg:gap-6">
+    <header className="sticky top-0 z-40 bg-[#111114]/95 backdrop-blur-md border-b border-[#222229] px-3 sm:px-6 py-2.5 transition-all shadow-subtle text-[#F4F4F5]">
+      <div className="max-w-[1440px] mx-auto flex items-center justify-between gap-3 lg:gap-6">
         
         {/* ========================================================= */}
         {/* LEFT: BRAND & TOPIC SELECTOR                              */}

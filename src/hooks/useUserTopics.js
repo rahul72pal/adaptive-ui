@@ -46,12 +46,15 @@ export function useUserTopics() {
     }
   }, [isAuthenticated, fetchTopics]);
 
-  const selectOrCreateTopic = async (rawTopic) => {
-    if (!rawTopic || !rawTopic.trim()) return null;
+  const selectOrCreateTopic = async (topicArg) => {
+    if (!topicArg) return null;
+    const isString = typeof topicArg === 'string';
+    if (isString && !topicArg.trim()) return null;
     setIsLoading(true);
     setError(null);
     try {
-      const result = await selectOrCreateTopicApi(rawTopic.trim());
+      const payload = isString ? topicArg.trim() : topicArg;
+      const result = await selectOrCreateTopicApi(payload);
       // Re-fetch topic list from backend
       await fetchTopics();
       return result;

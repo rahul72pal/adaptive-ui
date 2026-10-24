@@ -427,7 +427,7 @@ export function LearningWorkspaceView() {
   const isCurrentMastered = (activeNode.status === 'mastered' || activeNode.status === 'known' || isLessonCompleted) && (!attemptResult || attemptResult.passed) && (nodeCompleted || activeNode.status === 'mastered' || activeNode.status === 'known' || isLessonCompleted);
 
   return (
-    <div className="max-w-6xl mx-auto py-6 px-4 space-y-6 animate-fadeIn">
+    <div className="max-w-[1440px] w-full mx-auto py-4 px-2 space-y-5 animate-fadeIn">
       {/* Workspace Navigation Header */}
       <div className="flex items-center justify-between gap-4">
         <Button
