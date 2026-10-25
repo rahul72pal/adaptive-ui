@@ -88,7 +88,7 @@ export function parseTextToList(rawText) {
 
 export function LearningWorkspaceView() {
   const dispatch = useDispatch();
-  const { pathId, selectedNodeId, nodes } = useSelector((state) => state.learning);
+  const { pathId, selectedNodeId, currentNodeId, nodes } = useSelector((state) => state.learning);
   const { activeTopic, targetLanguage, explanationLanguage } = useSelector((state) => state.user);
   const { completeLevel, completeNode, isCompletingNode } = useLearningPath();
 
@@ -101,7 +101,8 @@ export function LearningWorkspaceView() {
     level: 'beginner',
   };
 
-  const nextNode = nodes[currentNodeIndex + 1] || null;
+  const pathNextNode = nodes.find((node) => node.concept_id === currentNodeId && currentNodeId !== selectedNodeId);
+  const nextNode = pathNextNode || nodes[currentNodeIndex + 1] || null;
   const isLearningNode = activeNode.node_type === 'learning' || !activeNode.node_type;
 
   // Single Question Hook for Practice Nodes
@@ -115,10 +116,13 @@ export function LearningWorkspaceView() {
     nodeCompleted = false,
     isSubmitting,
     isFetchingNext,
+    isRegeneratingQuestion,
     isStreamingQuestion,
     streamError,
     submitAnswer,
     fetchNextQuestion,
+    regenerateQuestion,
+    skipQuestion,
     retryQuestion,
   } = useQuestionAttempt(selectedNodeId, activeNode);
 
@@ -172,11 +176,10 @@ export function LearningWorkspaceView() {
   const [showRawStream, setShowRawStream] = useState(false);
   const [testRunCount, setTestRunCount] = useState(0);
 
-  // Pyodide Web Worker States
-  const [isPyodideReady, setIsPyodideReady] = useState(false);
+  // Code is evaluated only by the backend's configured sandbox.
+  const isPyodideReady = true;
   const [isRunningCode, setIsRunningCode] = useState(false);
   const [codeExecutionResults, setCodeExecutionResults] = useState(null);
-  const workerRef = React.useRef(null);
 
   const userAnswerRef = React.useRef(userAnswer);
   useEffect(() => {
@@ -193,49 +196,7 @@ export function LearningWorkspaceView() {
     testRunCountRef.current = testRunCount;
   }, [testRunCount]);
 
-  // 1. Worker Setup (Runs once; Pyodide is expensive to reload per run)
-  useEffect(() => {
-    const worker = new Worker('/pyodide.worker.js');
-    workerRef.current = worker;
-
-    worker.onmessage = (e) => {
-      const data = e.data;
-      if (data.type === 'READY') {
-        setIsPyodideReady(true);
-      } else if (
-        data.type === 'EXECUTION_COMPLETE' ||
-        data.type === 'COMPLETE' ||
-        data.type === 'EXECUTION_ERROR' ||
-        data.type === 'ERROR'
-      ) {
-        setIsRunningCode(false);
-        setCodeExecutionResults(data);
-
-        // Optional auto-submit metrics if all test cases pass
-        if (data.allPassed && submitAnswerRef.current) {
-          const totalTC = data.results?.length || 0;
-          const passedTC = data.results?.filter(r => r.passed)?.length || totalTC;
-          submitAnswerRef.current(userAnswerRef.current, {
-            test_run_count: testRunCountRef.current + 1,
-            test_cases_passed: passedTC,
-            total_test_cases: totalTC,
-          });
-          try {
-            confetti({ particleCount: 80, spread: 60 });
-          } catch (err) {
-            console.log('Confetti error:', err);
-          }
-        }
-      }
-    };
-
-    return () => {
-      worker.terminate();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 2. Starter Code Template load karein jab question ya language change ho
+  // 1. Starter Code Template load karein jab question ya language change ho
   const defaultStarterCode = useMemo(() => {
     if (!question) return '';
     // The generator now owns starter-code completeness (imports + node class
@@ -295,15 +256,7 @@ export function LearningWorkspaceView() {
     );
   };
 
-  const runViaPyodide = (fnName, testCases) => {
-    if (isPyodideReady && workerRef.current) {
-      workerRef.current.postMessage({ userCode: userAnswer, functionName: fnName, testCases });
-      return true;
-    }
-    return false;
-  };
-
-  // 4. Code Run Handler — backend sandbox first, Pyodide fallback for Python.
+  // 4. Code Run Handler — all submitted code runs in the configured backend sandbox.
   const handleRunBrowserCode = async () => {
     if (isRunningCode) return;
     const testCases = question?.test_cases || [];
@@ -340,14 +293,22 @@ export function LearningWorkspaceView() {
         code: userAnswer,
         function_name: fnName,
         test_cases: testCases,
+        contract: {
+          execution_mode: question?.execution_mode,
+          function_signature: question?.function_signature,
+          input_adapter: question?.input_adapter,
+          output_adapter: question?.output_adapter,
+          supported_languages: question?.supported_languages,
+          test_case_schema: question?.test_case_schema,
+          comparison_mode: question?.comparison_mode,
+          problem_version: question?.problem_version,
+          absolute_tolerance: question?.absolute_tolerance,
+          relative_tolerance: question?.relative_tolerance,
+        },
       });
       if (res?.supported) {
         finish(res);
         return;
-      }
-      // Unsupported server-side language → try the browser worker.
-      if (lang === 'python' || lang === 'py') {
-        if (runViaPyodide(fnName, testCases)) return;
       }
       setIsRunningCode(false);
       setCodeExecutionResults({
@@ -359,7 +320,6 @@ export function LearningWorkspaceView() {
         supported: false,
       });
     } catch (err) {
-      if ((lang === 'python' || lang === 'py') && runViaPyodide(fnName, testCases)) return;
       setIsRunningCode(false);
       setCodeExecutionResults({
         all_passed: false,
@@ -530,6 +490,7 @@ export function LearningWorkspaceView() {
     : 0;
 
   const isCurrentMastered = (activeNode.status === 'mastered' || activeNode.status === 'known' || isLessonCompleted) && (!attemptResult || attemptResult.passed) && (nodeCompleted || activeNode.status === 'mastered' || activeNode.status === 'known' || isLessonCompleted);
+  const activeNodeSkipped = activeNode.status === 'skipped';
 
   // A coding question is only truly cleared when every generated test case passes.
   const isCodeQuestion = !question?.options || question.options.length === 0 || question?.concept_type === 'code' || (question?.test_cases?.length > 0);
@@ -883,17 +844,16 @@ export function LearningWorkspaceView() {
           </div>
         </div>
       ) : (
-        /* PRACTICE NODE WORKSPACE (SINGLE QUESTION ENGINE) */
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          {/* Left Side: Concept Guidelines */}
-          <Card className="space-y-5 bg-[#111114] border-[#292932] text-[#F4F4F5]">
-            <div className="flex items-center gap-2 border-b border-[#222229] pb-3">
-              <Target className="w-4 h-4 text-amber-400" />
-              <h3 className="font-bold text-sm text-[#F4F4F5]">Practice Node Objective</h3>
-            </div>
-
-            <div className="prose prose-sm text-[#F4F4F5] max-w-none space-y-4 leading-relaxed text-xs sm:text-sm">
+        /* PRACTICE NODE WORKSPACE (SINGLE QUESTION ENGINE) - FULL WIDTH COLUMN-WISE LAYOUT */
+        <div className="flex flex-col gap-6 w-full">
+          {/* Top: Practice Node Objective Banner */}
+          <Card className="bg-[#111114] border-[#292932] text-[#F4F4F5] p-5 w-full">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#222229] pb-3.5">
               <div className="flex items-center gap-2">
+                <Target className="w-4 h-4 text-amber-400" />
+                <h3 className="font-bold text-sm text-[#F4F4F5]">Practice Node Objective</h3>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="ai" size="sm" className="capitalize">
                   Topic: {activeTopic}
                 </Badge>
@@ -901,26 +861,31 @@ export function LearningWorkspaceView() {
                   Concept: {selectedNodeId}
                 </Badge>
               </div>
+            </div>
 
-              <p className="text-[#F4F4F5] font-medium leading-relaxed">
+            <div className="pt-3.5 space-y-3 text-xs sm:text-sm">
+              <p className="text-[#E4E4E7] font-medium leading-relaxed">
                 {activeNode.description}
               </p>
 
-              <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-900/60 text-xs text-amber-200 space-y-2">
-                <div className="font-bold uppercase tracking-wider flex items-center gap-1.5 text-amber-400">
-                  <Zap className="w-3.5 h-3.5 text-amber-400" /> Single Question Engine
+              <div className="p-3 rounded-xl bg-amber-950/25 border border-amber-900/50 text-xs text-amber-200/90 flex items-start gap-2.5">
+                <Zap className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold uppercase tracking-wider text-[11px] text-amber-400">
+                    Single Question Engine
+                  </span>
+                  <p className="text-[12px] leading-relaxed text-[#D4D4D8]">
+                    Questions are generated individually via <code>/api/questions/generate</code>.
+                    Each attempt evaluates your answer, adjusts difficulty dynamically, and updates your mastery.
+                  </p>
                 </div>
-                <p className="leading-relaxed">
-                  Questions are generated individually via <code>/api/questions/generate</code>.
-                  Each attempt evaluates your answer, adjusts difficulty dynamically, and updates your mastery.
-                </p>
               </div>
             </div>
           </Card>
 
-          {/* Right Side: Single Question Card */}
-          <div className="space-y-4">
-            <Card className="space-y-5 bg-[#111114] border-[#292932] shadow-subtle text-[#F4F4F5]">
+          {/* Question Card & LeetCode Editor - Full Width */}
+          <div className="w-full space-y-4">
+            <Card className="space-y-5 bg-[#111114] border-[#292932] shadow-subtle text-[#F4F4F5] w-full">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#222229] pb-3">
                 <div className="flex items-center gap-2">
                   <HelpCircle className="w-4 h-4 text-[#8B7CFF]" />
@@ -948,6 +913,20 @@ export function LearningWorkspaceView() {
                     <Badge variant="default" size="sm" className="font-mono text-[10px]">
                       {question.execution_method}
                     </Badge>
+                  )}
+                  {question && !attemptResult?.passed && !nodeCompleted && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={regenerateQuestion}
+                      disabled={isLoadingQuestion || isFetchingNext || isSubmitting || isRegeneratingQuestion}
+                      isLoading={isRegeneratingQuestion}
+                      title="Replace this question with another one without advancing your question count"
+                    >
+                      {!isRegeneratingQuestion && <RefreshCw className="w-3.5 h-3.5" />}
+                      Regenerate question
+                    </Button>
                   )}
                 </div>
               </div>
@@ -1108,9 +1087,13 @@ export function LearningWorkspaceView() {
                   <div className="flex items-center gap-2">
                     <Trophy className="w-6 h-6 text-amber-400 animate-bounce" />
                     <div>
-                      <div className="font-extrabold text-sm text-[#F4F4F5]">Practice Concept Mastered! 🎉</div>
+                      <div className="font-extrabold text-sm text-[#F4F4F5]">
+                        {activeNodeSkipped ? 'Question Set Skipped' : 'Practice Concept Mastered! 🎉'}
+                      </div>
                       <div className="text-xs text-[#A1A1AA]">
-                        Target practice questions ({targetQuestionCount}/{targetQuestionCount}) completed for {activeNode.title}.
+                        {activeNodeSkipped
+                          ? `${activeNode.title} was skipped and is not marked as mastered.`
+                          : `Target practice questions (${targetQuestionCount}/${targetQuestionCount}) completed for ${activeNode.title}.`}
                       </div>
                     </div>
                   </div>
@@ -1153,7 +1136,7 @@ export function LearningWorkspaceView() {
                   )}
                 </div>
               ) : (
-                <div className="flex items-center justify-between gap-3 pt-2 border-t border-[#222229]">
+                <div className="flex flex-col gap-2 pt-2 border-t border-[#222229]">
                   {!attemptResult ? (
                     <div className="w-full space-y-2">
                       <Button
@@ -1203,6 +1186,19 @@ export function LearningWorkspaceView() {
                         </p>
                       )}
                     </div>
+                  )}
+                  {question && !nodeCompleted && (
+                    <Button
+                      type="button"
+                      onClick={skipQuestion}
+                      size="sm"
+                      variant="secondary"
+                      className="w-full"
+                      disabled={isLoadingQuestion || isFetchingNext || isSubmitting}
+                      isLoading={isFetchingNext && !isRegeneratingQuestion}
+                    >
+                      {currentQuestionCount >= targetQuestionCount ? 'Skip to next node' : 'Skip question'}
+                    </Button>
                   )}
                 </div>
               )}

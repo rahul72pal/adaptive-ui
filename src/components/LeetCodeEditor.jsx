@@ -172,9 +172,7 @@ export default function LeetCodeEditor({
                   : 'bg-emerald-400'
               }`} />
               <span className="hidden sm:inline">
-                {monacoLanguage === 'python'
-                  ? isPyodideReady ? 'Python Runtime Ready' : 'Loading Runtime...'
-                  : 'Sandbox Execution'}
+                Server Sandbox
               </span>
             </div>
 

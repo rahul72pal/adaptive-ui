@@ -80,7 +80,7 @@ const learningSlice = createSlice({
 
       // Automatically unlock downstream nodes whose dependencies are satisfied
       const completedSet = new Set(
-        state.nodes.filter(n => n.status === 'known' || n.status === 'mastered').map(n => n.concept_id)
+        state.nodes.filter(n => n.status === 'known' || n.status === 'mastered' || n.status === 'skipped').map(n => n.concept_id)
       );
 
       state.nodes.forEach(n => {

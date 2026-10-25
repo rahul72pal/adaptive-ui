@@ -31,7 +31,7 @@ export const questionApi = {
    * Endpoint: POST /api/questions/generate/stream
    */
   generateQuestionStream: async (
-    { topic, concept_id = 'fundamentals', concept_type = 'conceptual', difficulty = 3, language = 'python', explanation_language = 'english' },
+    { topic, concept_id = 'fundamentals', concept_type = 'conceptual', difficulty = 3, language = 'python', explanation_language = 'english', exclude_question_ids = [] },
     onEvent,
     onError
   ) => {
@@ -42,6 +42,7 @@ export const questionApi = {
       difficulty: typeof difficulty === 'number' ? difficulty : 3,
       language,
       explanation_language,
+      exclude_question_ids,
     };
     return streamFetch('/questions/generate/stream', payload, onEvent, onError);
   },

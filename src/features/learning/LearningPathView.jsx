@@ -42,9 +42,9 @@ export function LearningPathView() {
 
   // Check level completion
   const currentLevelName = (currentLevel || 'beginner').toLowerCase();
-  const allNodesCompleted = nodes.length > 0 && nodes.every((n) => n.status === 'mastered' || n.status === 'known');
+  const allNodesCompleted = nodes.length > 0 && nodes.every((n) => ['mastered', 'known', 'skipped'].includes(n.status));
   const currentLevelNodes = nodes.filter((n) => (n.level || 'beginner').toLowerCase() === currentLevelName);
-  const isCurrentLevelCompleted = currentLevelNodes.length > 0 && currentLevelNodes.every((n) => n.status === 'mastered' || n.status === 'known');
+  const isCurrentLevelCompleted = currentLevelNodes.length > 0 && currentLevelNodes.every((n) => ['mastered', 'known', 'skipped'].includes(n.status));
   const canProgressToNextLevel = (allNodesCompleted || isCurrentLevelCompleted) && currentLevelName !== 'expert';
   const nextLevelTitle = currentLevelName === 'beginner' ? 'Intermediate' : currentLevelName === 'intermediate' ? 'Advanced' : 'Expert';
 
@@ -64,7 +64,7 @@ export function LearningPathView() {
           </div>
           <h2 className="text-2xl font-extrabold text-[#F4F4F5] tracking-tight">Adaptive Learning Roadmap</h2>
           <p className="text-xs text-[#A1A1AA]">
-            Sequential concept curriculum. Complete concepts in order to unlock downstream topics.
+            Complete or skip concepts in order to unlock downstream topics. Skipped concepts do not add mastery.
           </p>
         </div>
 
@@ -86,7 +86,7 @@ export function LearningPathView() {
             <div>
               <h3 className="text-lg font-extrabold text-[#F4F4F5]">Congratulations! {(currentLevel || 'beginner').toUpperCase()} Level Completed</h3>
               <p className="text-xs text-[#A1A1AA] mt-0.5">
-                All concepts in your roadmap have been mastered. Click below to generate the {nextLevelTitle} level sequence.
+                This level is complete. Skipped concepts remain unmastered. Generate the {nextLevelTitle} level sequence below.
               </p>
             </div>
           </div>
@@ -148,6 +148,7 @@ export function LearningPathView() {
                 const isSelected = node.concept_id === selectedNodeId;
                 const isCurrent = node.concept_id === currentNodeId;
                 const isMastered = node.status === 'mastered' || node.status === 'known';
+                const isSkipped = node.status === 'skipped';
                 const isLocked = node.status === 'locked';
 
                 return (
@@ -175,7 +176,7 @@ export function LearningPathView() {
                               : 'bg-[#211C38] text-[#8B7CFF] border border-[#49406F]'
                           }`}
                         >
-                          {isMastered ? (
+                          {isMastered || isSkipped ? (
                             <CheckCircle2 className="w-5 h-5" />
                           ) : isLocked ? (
                             <Lock className="w-4 h-4" />
@@ -195,6 +196,7 @@ export function LearningPathView() {
                               {node.node_type || 'learning'}
                             </span>
                             {isMastered && <Badge variant="success" size="sm">Mastered</Badge>}
+                            {isSkipped && <Badge variant="default" size="sm">Skipped</Badge>}
                             {isCurrent && <Badge variant="ai" size="sm">Active Node</Badge>}
                           </div>
                           <p className="text-xs text-[#A1A1AA] line-clamp-1 mt-0.5">{node.description}</p>

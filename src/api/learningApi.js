@@ -51,6 +51,20 @@ export const learningApi = {
     }
   },
 
+  skipNode: async ({ topic, concept_id, learning_path_id = null }) => {
+    try {
+      return await apiClient.post('/learning/skip-node', {
+        topic: topic.toLowerCase(),
+        concept_id,
+        learning_path_id: learning_path_id || null,
+        graph_id: learning_path_id || null,
+      });
+    } catch (err) {
+      console.error('[learningApi.skipNode] API Error:', err);
+      throw err;
+    }
+  },
+
   getLesson: async ({ topic, concept_id, level = 'beginner', pattern = 'none', prerequisites = [], language = 'python', explanation_language = 'english' }) => {
     try {
       return await apiClient.post('/learning/lesson', {

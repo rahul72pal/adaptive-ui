@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import { questionApi } from '../api/questionApi';
+import { learningApi } from '../api/learningApi';
 import {
   setAttemptResult,
   setIsSubmitting,
@@ -16,6 +17,7 @@ export function useQuestionAttempt(conceptId, node = null) {
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
   const { userId, activeTopic, targetLanguage, explanationLanguage } = useSelector((state) => state.user);
+  const { pathId } = useSelector((state) => state.learning);
   const {
     currentQuestion,
     userAnswer,
@@ -34,28 +36,35 @@ export function useQuestionAttempt(conceptId, node = null) {
 
   const [isStreamingQuestion, setIsStreamingQuestion] = useState(false);
   const [isFetchingNext, setIsFetchingNext] = useState(false);
+  const [isRegeneratingQuestion, setIsRegeneratingQuestion] = useState(false);
   const [streamError, setStreamError] = useState(null);
-
-  const currentQuestionRef = useRef(currentQuestion);
-  useEffect(() => {
-    currentQuestionRef.current = currentQuestion;
-  }, [currentQuestion]);
 
   const streamKeyRef = useRef(null);
   const nextStreamRef = useRef(false);
+  const seenQuestionIdsRef = useRef(new Set());
+  const seenQuestionScopeRef = useRef(null);
 
   // Progressive question stream: statement tokens first, then code + test cases.
   useEffect(() => {
     if (!isPracticeNode || !conceptId || !activeTopic || nodeCompleted) return;
 
-    // One stream per (concept, topic, difficulty, language). This also replaces
-    // any stale question left over from a previously selected node.
-    const key = `${conceptId}|${activeTopic}|${difficulty}|${targetLanguage}`;
+    // One initial stream per (concept, topic, language). Difficulty changes
+    // after a passed attempt are handled by handleNextQuestion below. This also
+    // replaces any stale question left over from a previously selected node.
+    const scope = `${conceptId}|${activeTopic}`;
+    if (seenQuestionScopeRef.current !== scope) {
+      seenQuestionScopeRef.current = scope;
+      seenQuestionIdsRef.current = new Set();
+      streamKeyRef.current = null;
+    }
+    const key = `${conceptId}|${activeTopic}|${conceptType}|${targetLanguage}`;
     if (streamKeyRef.current === key) return;
     streamKeyRef.current = key;
 
     let cancelled = false;
     let statement = '';
+    let receivedQuestion = false;
+    let streamReportedError = false;
     setIsStreamingQuestion(true);
     setStreamError(null);
 
@@ -80,6 +89,7 @@ export function useQuestionAttempt(conceptId, node = null) {
           dispatch(patchCurrentQuestion({ question: statement, markdown: statement }));
           break;
         case 'question_ready':
+          receivedQuestion = true;
           dispatch(patchCurrentQuestion({
             ...(evt.question || {}),
             markdown: evt.markdown || statement,
@@ -105,6 +115,9 @@ export function useQuestionAttempt(conceptId, node = null) {
         case 'cached':
         case 'complete': {
           const q = evt.question || {};
+          receivedQuestion = Boolean(q.question || q.markdown || statement);
+          const questionId = q.id || q._id;
+          if (questionId) seenQuestionIdsRef.current.add(String(questionId));
           dispatch(patchCurrentQuestion({
             ...q,
             markdown: evt.markdown || q.markdown || statement,
@@ -113,6 +126,7 @@ export function useQuestionAttempt(conceptId, node = null) {
           break;
         }
         case 'error':
+          streamReportedError = true;
           setStreamError(evt.message || 'Question generation failed.');
           setIsStreamingQuestion(false);
           break;
@@ -142,7 +156,7 @@ export function useQuestionAttempt(conceptId, node = null) {
         if (cancelled) return;
         setIsStreamingQuestion(false);
         // If the stream produced no statement, fall back to the blocking endpoint.
-        if (!currentQuestionRef.current?.question) {
+        if (!receivedQuestion && !streamReportedError) {
           questionApi
             .generateQuestion({
               topic: activeTopic,
@@ -162,7 +176,7 @@ export function useQuestionAttempt(conceptId, node = null) {
     };
     // `currentQuestion` is intentionally excluded; it would cancel our own stream.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conceptId, activeTopic, isPracticeNode, nodeCompleted, difficulty, conceptType, targetLanguage, explanationLanguage, dispatch]);
+  }, [conceptId, activeTopic, isPracticeNode, nodeCompleted, conceptType, targetLanguage, explanationLanguage, dispatch]);
 
   const effectiveTargetCount = node?.target_question_count || targetQuestionCount || 3;
 
@@ -241,18 +255,16 @@ export function useQuestionAttempt(conceptId, node = null) {
     dispatch(setAttemptResult(null));
   };
 
-  const handleNextQuestion = () => {
-    if (attemptResult?.next_question) {
-      dispatch(startStreamingQuestion({ question: attemptResult.next_question }));
-      return;
-    }
+  const requestQuestion = (requestedDifficulty, questionCount, { regenerate = false } = {}) => {
     if (nextStreamRef.current) return;
     nextStreamRef.current = true;
     setIsFetchingNext(true);
+    setIsRegeneratingQuestion(regenerate);
 
-    const nextCount = attemptResult?.next_question_count || currentQuestionCount + 1;
-    const nextDifficulty = attemptResult?.next_difficulty || difficulty || 3;
+    const nextDifficulty = requestedDifficulty || difficulty || 3;
     let statement = '';
+    const currentQuestionId = activeQ?.id || activeQ?._id;
+    if (currentQuestionId) seenQuestionIdsRef.current.add(String(currentQuestionId));
 
     dispatch(startStreamingQuestion({
       question: {
@@ -264,7 +276,7 @@ export function useQuestionAttempt(conceptId, node = null) {
         markdown: '',
         test_cases: [],
       },
-      nextQuestionCount: nextCount,
+      nextQuestionCount: questionCount,
     }));
 
     const handleEvent = (evt) => {
@@ -288,12 +300,16 @@ export function useQuestionAttempt(conceptId, node = null) {
         dispatch(patchCurrentQuestion({ test_cases: evt.test_cases || [], execution_method: 'onecompiler' }));
       } else if (evt.event === 'cached' || evt.event === 'complete') {
         const q = evt.question || {};
+        const questionId = q.id || q._id;
+        if (questionId) seenQuestionIdsRef.current.add(String(questionId));
         dispatch(patchCurrentQuestion({ ...q, markdown: evt.markdown || q.markdown || statement }));
         nextStreamRef.current = false;
         setIsFetchingNext(false);
       } else if (evt.event === 'error') {
+        setStreamError(evt.message || 'Question generation failed.');
         nextStreamRef.current = false;
         setIsFetchingNext(false);
+        setIsRegeneratingQuestion(false);
       }
     };
 
@@ -306,17 +322,68 @@ export function useQuestionAttempt(conceptId, node = null) {
           difficulty: nextDifficulty,
           language: targetLanguage || 'python',
           explanation_language: explanationLanguage || 'english',
+          exclude_question_ids: [...seenQuestionIdsRef.current],
         },
         handleEvent,
         () => {
+          setStreamError('The question stream failed. Please try again.');
           nextStreamRef.current = false;
           setIsFetchingNext(false);
+          setIsRegeneratingQuestion(false);
         }
       )
       .finally(() => {
         nextStreamRef.current = false;
         setIsFetchingNext(false);
+        setIsRegeneratingQuestion(false);
       });
+  };
+
+  const handleNextQuestion = () => {
+    if (attemptResult?.next_question) {
+      const question = attemptResult.next_question;
+      const questionId = question.id || question._id;
+      if (questionId) seenQuestionIdsRef.current.add(String(questionId));
+      dispatch(startStreamingQuestion({
+        question,
+        nextQuestionCount: attemptResult.next_question_count || currentQuestionCount + 1,
+      }));
+      return;
+    }
+    requestQuestion(
+      attemptResult?.next_difficulty || difficulty || 3,
+      attemptResult?.next_question_count || currentQuestionCount + 1,
+    );
+  };
+
+  const regenerateQuestion = () => {
+    if (!activeQ || isSubmitting || nodeCompleted || attemptResult?.passed) return;
+    setStreamError(null);
+    requestQuestion(activeQ.difficulty || difficulty, currentQuestionCount, { regenerate: true });
+  };
+
+  const skipQuestion = () => {
+    if (!activeQ || isSubmitting || nodeCompleted) return;
+    setStreamError(null);
+    if (currentQuestionCount >= effectiveTargetCount) {
+      setIsFetchingNext(true);
+      learningApi.skipNode({
+        topic: activeTopic,
+        concept_id: conceptId,
+        learning_path_id: pathId,
+      }).then((updatedPath) => {
+        dispatch(setLearningPath(updatedPath));
+        dispatch(updateNodeStatus({ conceptId, status: 'skipped' }));
+        dispatch(setNodeCompleted(true));
+        queryClient.invalidateQueries(['learningPath', userId, activeTopic]);
+      }).catch((err) => {
+        setStreamError(err?.response?.data?.detail || err?.message || 'Unable to skip this node. Please try again.');
+      }).finally(() => {
+        setIsFetchingNext(false);
+      });
+      return;
+    }
+    requestQuestion(activeQ.difficulty || difficulty, currentQuestionCount + 1);
   };
 
   return {
@@ -333,8 +400,11 @@ export function useQuestionAttempt(conceptId, node = null) {
     nodeCompleted,
     isSubmitting: submitMutation.isPending || isSubmitting,
     isFetchingNext,
+    isRegeneratingQuestion,
     submitAnswer,
     fetchNextQuestion: handleNextQuestion,
+    regenerateQuestion,
+    skipQuestion,
     retryQuestion,
   };
 }
